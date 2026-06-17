@@ -120,8 +120,13 @@ fn parse_kernel(s: &str) -> Option<String> {
     None
 }
 
-/// Run `wsl --status` and return the parsed status. Returns
-/// `WslState::NotInstalled` if `wsl.exe` is not on PATH.
+/// Run `wsl --status` and return the parsed status.
+///
+/// `wsl.exe` can be on PATH (Windows 10+ ships it) but the WSL feature can
+/// be disabled — in that case `wsl --status` exits with a "feature not
+/// enabled" message. The helper classifies that as `NotInstalled` and
+/// returns a clean status instead of propagating `io::Error`, so the
+/// dashboard never sees scary error text for an "expected absence".
 pub fn detect_wsl() -> Result<WslStatus> {
     if which::which("wsl").is_err() {
         return Ok(WslStatus {
@@ -132,9 +137,39 @@ pub fn detect_wsl() -> Result<WslStatus> {
             raw: "wsl.exe not on PATH".into(),
         });
     }
-    let out = Command::new("wsl").arg("--status").output()?;
+    let out = match Command::new("wsl").arg("--status").output() {
+        Ok(o) => o,
+        Err(e) => {
+            // wsl.exe is on PATH but can't even be spawned (corrupt,
+            // permission denied, antivirus blocking). Treat as Unknown,
+            // never propagate.
+            return Ok(WslStatus {
+                state: WslState::Unknown,
+                default_distro: None,
+                distros: Vec::new(),
+                kernel_version: None,
+                raw: format!("failed to invoke `wsl --status`: {e}"),
+            });
+        }
+    };
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    // If wsl.exe ran but printed a "feature not enabled" message, treat as
+    // NotInstalled. Otherwise parse the output normally.
+    if !out.status.success()
+        && (stdout.contains("not enabled")
+            || stderr.contains("not enabled")
+            || stdout.contains("没有启用")
+            || stderr.contains("没有启用"))
+    {
+        return Ok(WslStatus {
+            state: WslState::NotInstalled,
+            default_distro: None,
+            distros: Vec::new(),
+            kernel_version: None,
+            raw: format!("{stdout}\n{stderr}"),
+        });
+    }
     Ok(parse_wsl_status(&stdout, &stderr, out.status.success()))
 }
 
@@ -191,5 +226,24 @@ mod tests {
         let s = parse_wsl_status(input, "", true);
         assert_eq!(s.state, WslState::Enabled);
         assert_eq!(s.default_distro, None);
+    }
+
+    #[test]
+    fn disabled_message_classifies_as_not_installed() {
+        // `wsl --status` prints this on Win10/11 boxes where the WSL
+        // feature is off; the helper should classify it as NotInstalled,
+        // not Unknown.
+        let stdout = "";
+        let stderr =
+            "The Windows Subsystem for Linux optional component is not enabled.";
+        let s = parse_wsl_status(stdout, stderr, false);
+        assert_eq!(s.state, WslState::NotInstalled);
+    }
+
+    #[test]
+    fn localized_disabled_classifies_as_not_installed() {
+        // Chinese variant of the "feature not enabled" message.
+        let s = parse_wsl_status("", "适用于 Linux 的 Windows 子系统功能没有启用。", false);
+        assert_eq!(s.state, WslState::NotInstalled);
     }
 }

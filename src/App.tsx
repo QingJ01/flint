@@ -158,36 +158,40 @@ export default function App() {
   async function refresh() {
     if (busy) return;
     setRefreshing(true);
-    try {
-      const [status, m, p, ws, mi] = await Promise.all([
-        invoke<ToolStatus[]>("detect_environment"),
-        invoke<ToolMeta[]>("list_installable_tools"),
-        invoke<PresetMeta[]>("list_presets"),
-        invoke<WslStatus>("wsl_status"),
-        invoke<MirrorStatus>("mirror_status").catch(() => ({ npm: null, pip: null })),
-      ]);
-      setTools(status);
-      setMeta(m);
-      setPresets(p);
-      setWsl(ws);
-      setMirror(mi);
-      setParams((cur) => {
-        const next: ParamMap = { ...cur };
-        for (const tool of m) {
-          const slot = (next[tool.id] ??= {});
-          for (const param of tool.parameters) {
-            if (slot[param.key] === undefined && param.default) {
-              slot[param.key] = param.default;
-            }
+    // Every invoke is wrapped in `.catch` with a sensible default — the
+    // dashboard should never surface scary "[error] io error" lines for an
+    // expected absence (e.g. wsl.exe not on a Win10 box without WSL).
+    const [status, m, p, ws, mi] = await Promise.all([
+      invoke<ToolStatus[]>("detect_environment").catch((e) => {
+        setLogs((cur) => [...cur, `[error] detect_environment: ${String(e)}`]);
+        return [] as ToolStatus[];
+      }),
+      invoke<ToolMeta[]>("list_installable_tools").catch((e) => {
+        setLogs((cur) => [...cur, `[error] list_installable_tools: ${String(e)}`]);
+        return [] as ToolMeta[];
+      }),
+      invoke<PresetMeta[]>("list_presets").catch(() => [] as PresetMeta[]),
+      invoke<WslStatus>("wsl_status").catch(() => null),
+      invoke<MirrorStatus>("mirror_status").catch(() => ({ npm: null, pip: null })),
+    ]);
+    setTools(status);
+    setMeta(m);
+    setPresets(p);
+    setWsl(ws);
+    setMirror(mi);
+    setParams((cur) => {
+      const next: ParamMap = { ...cur };
+      for (const tool of m) {
+        const slot = (next[tool.id] ??= {});
+        for (const param of tool.parameters) {
+          if (slot[param.key] === undefined && param.default) {
+            slot[param.key] = param.default;
           }
         }
-        return next;
-      });
-    } catch (e) {
-      setLogs((cur) => [...cur, `[error] ${String(e)}`]);
-    } finally {
-      setRefreshing(false);
-    }
+      }
+      return next;
+    });
+    setRefreshing(false);
   }
 
   useEffect(() => {
