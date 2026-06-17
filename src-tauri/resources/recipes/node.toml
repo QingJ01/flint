@@ -3,12 +3,35 @@ id = "node"
 display_name = "Node.js"
 category = "runtime"
 
+# 版本下拉：fnm install 接受 lts-latest / latest / 具体版本号
+[parameters.node_version]
+label = "Node 版本"
+default = "lts-latest"
+options = [
+  { value = "lts-latest", label = "LTS (推荐)" },
+  { value = "latest", label = "Latest" },
+]
+
 # 通过 fnm 安装（用户级，零提权）
 [install.windows]
 requires_elevation = false
 steps = [
-  { cmd = "fnm", args = ["install", "--lts"] },
-  { cmd = "fnm", args = ["default", "lts-latest"] },
+  { cmd = "fnm", args = ["install", "{node_version}"] },
+  { cmd = "fnm", args = ["default", "{node_version}"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "fnm", args = ["install", "{node_version}"] },
+  { cmd = "fnm", args = ["default", "{node_version}"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "fnm", args = ["install", "{node_version}"] },
+  { cmd = "fnm", args = ["default", "{node_version}"] },
 ]
 
 [detect.windows]
