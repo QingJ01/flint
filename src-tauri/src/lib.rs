@@ -1,4 +1,5 @@
 pub mod error;
+pub mod recipe;
 pub mod version;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/

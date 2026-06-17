@@ -1,0 +1,21 @@
+[meta]
+id = "node"
+display_name = "Node.js"
+category = "runtime"
+
+# 通过 fnm 安装（用户级，零提权）
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "fnm", args = ["install", "--lts"] },
+  { cmd = "fnm", args = ["default", "lts-latest"] },
+]
+
+[detect.windows]
+cmd = "node"
+args = ["--version"]
+version_regex = "v(?P<v>\\d+\\.\\d+\\.\\d+)"
+
+[verify.windows]
+cmd = "node"
+args = ["--version"]
