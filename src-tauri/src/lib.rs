@@ -10,9 +10,9 @@ pub mod config;
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            ipc::detect_node,
             ipc::detect_environment,
-            ipc::install_node
+            ipc::list_installable_tools,
+            ipc::install_tool
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

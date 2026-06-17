@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -23,7 +23,7 @@ pub struct Meta {
     pub category: String,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ParameterDef {
     pub label: String,
     #[serde(default)]
@@ -31,7 +31,7 @@ pub struct ParameterDef {
     pub options: Vec<ParameterOption>,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ParameterOption {
     pub value: String,
     pub label: String,
@@ -74,6 +74,11 @@ impl Recipe {
         let text = std::fs::read_to_string(&path)
             .map_err(|e| format!("read {}: {e}", path.display()))?;
         toml::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
+    }
+
+    /// Convenience: list available recipes from CWD-relative `resources/recipes/`.
+    pub fn list_available() -> Vec<Meta> {
+        Self::list_available_from(Path::new("resources/recipes"))
     }
 
     /// Scan `dir` for `<id>.toml` files and return each recipe's `Meta`.
