@@ -19,7 +19,11 @@ pub fn run() {
             ipc::get_preset,
             ipc::wsl_status,
             ipc::wsl_enable,
-            ipc::wsl_install_dev_tools
+            ipc::wsl_install_dev_tools,
+            ipc::mirror_status,
+            ipc::apply_npm_mirror,
+            ipc::apply_pip_mirror,
+            ipc::apply_domestic_acceleration
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

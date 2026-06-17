@@ -48,12 +48,32 @@ type WslStatus = {
   raw: string;
 };
 
+type MirrorStatus = {
+  npm: string | null;
+  pip: string | null;
+};
+
+const NPM_MIRRORS: { value: string; label: string }[] = [
+  { value: "https://registry.npmjs.org/", label: "官方源 (npmjs.org)" },
+  { value: "https://registry.npmmirror.com/", label: "淘宝镜像 (npmmirror.com)" },
+  { value: "https://mirrors.huaweicloud.com/repository/npm/", label: "华为云镜像" },
+  { value: "https://mirrors.cloud.tencent.com/npm/", label: "腾讯云镜像" },
+];
+
+const PIP_MIRRORS: { value: string; label: string }[] = [
+  { value: "https://pypi.org/simple", label: "官方源 (PyPI)" },
+  { value: "https://pypi.tuna.tsinghua.edu.cn/simple", label: "清华源" },
+  { value: "https://mirrors.aliyun.com/pypi/simple", label: "阿里源" },
+  { value: "https://mirrors.huaweicloud.com/repository/pypi/simple", label: "华为云镜像" },
+  { value: "https://mirrors.cloud.tencent.com/pypi/simple", label: "腾讯云镜像" },
+];
+
 type InstallEvent =
   | { type: "Log"; line: string }
   | { type: "Progress"; pct: number }
   | { type: "Done"; ok: boolean; version: string | null; error: string | null };
 
-type View = "dashboard" | "presets" | "wsl";
+type View = "dashboard" | "presets" | "wsl" | "mirrors";
 
 const categoryLabel: Record<ToolCategory, string> = {
   runtime: "运行时与基础工具",
@@ -101,6 +121,8 @@ export default function App() {
   } | null>(null);
   const [wsl, setWsl] = useState<WslStatus | null>(null);
   const [wslBusy, setWslBusy] = useState(false);
+  const [mirror, setMirror] = useState<MirrorStatus | null>(null);
+  const [mirrorBusy, setMirrorBusy] = useState(false);
   const settled = useRef(false);
   const logEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -123,16 +145,18 @@ export default function App() {
     if (busy) return;
     setRefreshing(true);
     try {
-      const [status, m, p, ws] = await Promise.all([
+      const [status, m, p, ws, mi] = await Promise.all([
         invoke<ToolStatus[]>("detect_environment"),
         invoke<ToolMeta[]>("list_installable_tools"),
         invoke<PresetMeta[]>("list_presets"),
         invoke<WslStatus>("wsl_status"),
+        invoke<MirrorStatus>("mirror_status").catch(() => ({ npm: null, pip: null })),
       ]);
       setTools(status);
       setMeta(m);
       setPresets(p);
       setWsl(ws);
+      setMirror(mi);
       setParams((cur) => {
         const next: ParamMap = { ...cur };
         for (const tool of m) {
@@ -255,6 +279,67 @@ export default function App() {
       setLogs((cur) => [...cur, `✗ ${res.error ?? "WSL 内开发环境安装失败"}`]);
     }
     void refresh();
+  }
+
+  async function applyNpmMirror(url: string) {
+    if (mirrorBusy) return;
+    setMirrorBusy(true);
+    try {
+      const changed = await invoke<boolean>("apply_npm_mirror", {
+        registryUrl: url,
+      });
+      setLogs((cur) => [
+        ...cur,
+        changed ? `✓ npm registry 已写入：${url}` : `[skip] npm registry 已是该值`,
+      ]);
+      void refresh();
+    } catch (e) {
+      setLogs((cur) => [...cur, `✗ npm mirror 失败：${String(e)}`]);
+    } finally {
+      setMirrorBusy(false);
+    }
+  }
+
+  async function applyPipMirror(url: string) {
+    if (mirrorBusy) return;
+    setMirrorBusy(true);
+    try {
+      const changed = await invoke<boolean>("apply_pip_mirror", {
+        indexUrl: url,
+      });
+      setLogs((cur) => [
+        ...cur,
+        changed ? `✓ pip index-url 已写入：${url}` : `[skip] pip index-url 已是该值`,
+      ]);
+      void refresh();
+    } catch (e) {
+      setLogs((cur) => [...cur, `✗ pip mirror 失败：${String(e)}`]);
+    } finally {
+      setMirrorBusy(false);
+    }
+  }
+
+  async function applyDomestic() {
+    if (mirrorBusy) return;
+    setMirrorBusy(true);
+    try {
+      const res = await invoke<[string, boolean][]>(
+        "apply_domestic_acceleration",
+      );
+      for (const [kind, changed] of res) {
+        setLogs((cur) => [
+          ...cur,
+          changed
+            ? `✓ ${kind} 已切到国内源`
+            : `[skip] ${kind} 已是国内源`,
+        ]);
+      }
+      void refresh();
+    } catch (e) {
+      setLogs((cur) => [...cur, `✗ 国内加速失败：${String(e)}`]);
+    } finally {
+      setMirrorBusy(false);
+    }
   }
 
   async function installOne(id: string) {
@@ -415,6 +500,11 @@ export default function App() {
             onClick={() => setView("wsl")}
             label="WSL"
           />
+          <TabButton
+            active={view === "mirrors"}
+            onClick={() => setView("mirrors")}
+            label="镜像"
+          />
         </nav>
 
         {/* Slim top progress bar */}
@@ -570,12 +660,20 @@ export default function App() {
                 busy={busy}
                 presetProgress={presetProgress}
               />
-            ) : (
+            ) : view === "wsl" ? (
               <WslView
                 status={wsl}
                 busy={wslBusy}
                 onEnable={() => void wslEnable()}
                 onInstallDevTools={() => void wslInstallDevTools()}
+              />
+            ) : (
+              <MirrorsView
+                status={mirror}
+                busy={mirrorBusy}
+                onApplyNpm={(url) => void applyNpmMirror(url)}
+                onApplyPip={(url) => void applyPipMirror(url)}
+                onAccelerate={() => void applyDomestic()}
               />
             )}
           </div>
@@ -620,7 +718,7 @@ export default function App() {
 
         <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-[11px] text-ink-faint">
           <span>Flint · 一键点燃开发环境</span>
-          <span className="font-mono">v0.3.0 · slice 3</span>
+          <span className="font-mono">v0.4.0 · slice 4</span>
         </footer>
       </div>
     </main>
@@ -841,6 +939,159 @@ function WslView(props: {
         在 WSL 中直接打开 VS Code（需 Windows 端已装 VS Code）。
       </p>
     </div>
+  );
+}
+
+/* ---------- Mirrors view ---------- */
+
+function MirrorsView(props: {
+  status: MirrorStatus | null;
+  busy: boolean;
+  onApplyNpm: (url: string) => void;
+  onApplyPip: (url: string) => void;
+  onAccelerate: () => void;
+}) {
+  const { status, busy, onApplyNpm, onApplyPip, onAccelerate } = props;
+  const npmCurrent = status?.npm ?? "";
+  const pipCurrent = status?.pip ?? "";
+  const npmInCN = npmCurrent.includes("npmmirror") || npmCurrent.includes("huaweicloud") || npmCurrent.includes("tencent");
+  const pipInCN = pipCurrent.includes("tuna") || pipCurrent.includes("aliyun") || pipCurrent.includes("huaweicloud") || pipCurrent.includes("tencent");
+
+  return (
+    <div className="flex flex-col gap-4">
+      <article className="flex items-center justify-between gap-4 rounded-xl border border-accent-soft bg-accent-soft/30 p-5">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-medium text-ink">国内加速模式</h2>
+          <p className="mt-1 text-[12.5px] text-ink-muted">
+            一键切换 npm + pip 到国内镜像。GitHub 加速请见下方的 "gh-proxy" 链接。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onAccelerate}
+          disabled={busy}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-medium text-white shadow-[0_1px_2px_rgba(204,120,92,0.4)] transition hover:bg-accent-deep disabled:opacity-50"
+        >
+          <RocketIcon className="h-3.5 w-3.5" />
+          {busy ? "切换中…" : "一键加速"}
+        </button>
+      </article>
+
+      <MirrorCard
+        title="npm registry"
+        description="通过 ~/.npmrc 锁定。影响 npm install / npx 等所有 Node 包下载。"
+        current={npmCurrent}
+        inCN={npmInCN}
+        options={NPM_MIRRORS}
+        busy={busy}
+        onApply={onApplyNpm}
+      />
+
+      <MirrorCard
+        title="pip index-url"
+        description="通过 pip.ini (Windows) / pip.conf (POSIX) 锁定。影响 pip install / uv 等所有 Python 包下载。"
+        current={pipCurrent}
+        inCN={pipInCN}
+        options={PIP_MIRRORS}
+        busy={busy}
+        onApply={onApplyPip}
+      />
+
+      <article className="rounded-xl border border-line bg-surface p-5">
+        <h3 className="text-[14px] font-medium text-ink">GitHub 克隆加速</h3>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-ink-muted">
+          Flint 不直接修改 git config（避免污染你的提交身份）。手动加速两种方式：
+        </p>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-[12.5px] text-ink-muted">
+          <li>
+            <code className="rounded bg-surface-sunken px-1 py-0.5 font-mono text-[11.5px] text-ink">
+              git clone https://gh-proxy.com/https://github.com/owner/repo
+            </code>
+          </li>
+          <li>
+            全局 <code className="font-mono text-[11.5px]">git config --global url."https://gh-proxy.com/https://github.com/".insteadOf "https://github.com/"</code>
+          </li>
+        </ol>
+      </article>
+    </div>
+  );
+}
+
+function MirrorCard(props: {
+  title: string;
+  description: string;
+  current: string;
+  inCN: boolean;
+  options: { value: string; label: string }[];
+  busy: boolean;
+  onApply: (url: string) => void;
+}) {
+  const { title, description, current, inCN, options, busy, onApply } = props;
+  return (
+    <article className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(31,30,27,0.03)]">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[14px] font-medium text-ink">{title}</h3>
+            {inCN ? (
+              <span className="rounded-full bg-success-soft px-2 py-0.5 text-[10.5px] font-medium text-success">
+                国内
+              </span>
+            ) : current ? (
+              <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[10.5px] font-medium text-ink-muted">
+                官方
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-[12.5px] text-ink-muted">{description}</p>
+          {current && (
+            <p className="mt-1.5 truncate font-mono text-[11.5px] text-ink-faint">
+              当前：{current}
+            </p>
+          )}
+        </div>
+        <div className="w-72 shrink-0">
+          <select
+            className="h-9 w-full appearance-none rounded-lg border border-line bg-surface pl-3 pr-8 text-[12.5px] text-ink transition hover:border-line-strong focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) {
+                onApply(e.target.value);
+                e.target.value = "";
+              }
+            }}
+            disabled={busy}
+          >
+            <option value="" disabled>
+              切换到…
+            </option>
+            {options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RocketIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M9 2c4 0 5 1 5 5l-4 4-3-3 4-4c0-1-1-2-2-2z" />
+      <path d="M7 8 3 12l1 1 4-4" />
+      <path d="M4 13c-1 1-2 1-2 1s0-1 1-2" />
+    </svg>
   );
 }
 

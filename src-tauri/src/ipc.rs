@@ -63,6 +63,48 @@ pub async fn wsl_status() -> Result<WslStatus, String> {
     wsl::detect_wsl().map_err(|e| e.to_string())
 }
 
+/// Read the current npm + pip registry selections.
+#[tauri::command]
+pub async fn mirror_status() -> Result<MirrorStatus, String> {
+    Ok(MirrorStatus {
+        npm: config::current_npm_registry().map_err(|e| e.to_string())?,
+        pip: config::current_pip_registry().map_err(|e| e.to_string())?,
+    })
+}
+
+#[derive(Serialize, Clone)]
+pub struct MirrorStatus {
+    pub npm: Option<String>,
+    pub pip: Option<String>,
+}
+
+/// Apply an npm registry by writing to `~/.npmrc`.
+#[tauri::command]
+pub async fn apply_npm_mirror(registry_url: String) -> Result<bool, String> {
+    config::apply_npm_registry(&registry_url).map_err(|e| e.to_string())
+}
+
+/// Apply a pip index URL.
+#[tauri::command]
+pub async fn apply_pip_mirror(index_url: String) -> Result<bool, String> {
+    config::apply_pip_registry(&index_url).map_err(|e| e.to_string())
+}
+
+/// "国内加速模式" master switch — apply the default CN mirrors for both
+/// npm and pip in one call. Returns the list of (kind, changed) pairs so
+/// the UI can summarize what happened.
+#[tauri::command]
+pub async fn apply_domestic_acceleration() -> Result<Vec<(String, bool)>, String> {
+    let npm = config::apply_npm_registry("https://registry.npmmirror.com/")
+        .map_err(|e| e.to_string())?;
+    let pip = config::apply_pip_registry("https://pypi.tuna.tsinghua.edu.cn/simple")
+        .map_err(|e| e.to_string())?;
+    Ok(vec![
+        ("npm".into(), npm),
+        ("pip".into(), pip),
+    ])
+}
+
 /// Trigger the Windows "enable WSL" flow. This is the one operation that
 /// genuinely requires admin: it spawns `wsl --install` via PowerShell's
 /// `Start-Process -Verb RunAs`, which prompts the user with a UAC dialog.
