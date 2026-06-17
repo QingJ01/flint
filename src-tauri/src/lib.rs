@@ -4,6 +4,7 @@ pub mod recipe;
 pub mod executor;
 pub mod detector;
 pub mod ipc;
+pub mod config;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

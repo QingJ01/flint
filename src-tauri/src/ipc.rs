@@ -1,6 +1,6 @@
 use serde::Serialize;
 use tauri::ipc::Channel;
-use crate::{detector, executor::{self, StreamEvent}, recipe::Recipe};
+use crate::{config, detector, executor::{self, StreamEvent}, recipe::Recipe};
 
 /// 流式推送给前端的事件。`#[serde(tag = "type")]` 让前端可以按 `event.type` 分支。
 #[derive(Serialize, Clone)]
@@ -49,6 +49,23 @@ pub async fn install_node(on_event: Channel<InstallEvent>) -> Result<(), String>
             return Err(msg);
         }
         let _ = on_event.send(InstallEvent::Progress { pct: ((i + 1) * 100 / total) as u8 });
+    }
+
+    // 让新终端能用上 node：把 fnm 的 shell 集成片段写入 PowerShell profile（用户级，免管理员）
+    match config::ensure_fnm_in_powershell_profiles() {
+        Ok(changed) if !changed.is_empty() => {
+            let _ = on_event.send(InstallEvent::Log {
+                line: format!("[ok] 已写入 PowerShell 集成（{}）；新开终端即可用 node", changed.join(", ")),
+            });
+        }
+        Ok(_) => {
+            let _ = on_event.send(InstallEvent::Log { line: "[ok] PowerShell 集成已存在，无需重复写入".into() });
+        }
+        Err(e) => {
+            let _ = on_event.send(InstallEvent::Log {
+                line: format!("[warn] 写入 PowerShell 集成失败：{e}；你可能需手动在 PS profile 加入 fnm env 行"),
+            });
+        }
     }
 
     // 验证：node 是否可用（注意：当前进程的 PATH 不会自动刷新，所以这里可能仍检测不到）
