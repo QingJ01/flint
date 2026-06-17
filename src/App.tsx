@@ -1,51 +1,85 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useState, useRef } from "react";
+import { invoke, Channel } from "@tauri-apps/api/core";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+type InstallEvent =
+  | { type: "Log"; line: string }
+  | { type: "Progress"; pct: number }
+  | { type: "Done"; ok: boolean; version: string | null; error: string | null };
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+export default function App() {
+  const [node, setNode] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [logs, setLogs] = useState<string[]>([]);
+  const settled = useRef(false);
+
+  async function detect() {
+    try {
+      const v = await invoke<string | null>("detect_node");
+      setNode(v);
+    } catch (e) {
+      setLogs((l) => [...l, `✗ 检测失败: ${String(e)}`]);
+    }
+  }
+
+  async function install() {
+    setBusy(true);
+    setPct(0);
+    setLogs([]);
+    settled.current = false;
+    const ch = new Channel<InstallEvent>();
+    ch.onmessage = (e) => {
+      if (e.type === "Log") {
+        setLogs((l) => [...l, e.line]);
+      } else if (e.type === "Progress") {
+        setPct(e.pct);
+      } else if (e.type === "Done") {
+        if (settled.current) return;
+        settled.current = true;
+        setBusy(false);
+        setPct(100);
+        if (e.ok && e.version) {
+          setNode(e.version);
+          setLogs((l) => [...l, `✓ Node.js ${e.version} 已就绪`]);
+        } else {
+          setLogs((l) => [...l, `✗ ${e.error ?? "安装未完成"}（可新开终端运行 node -v 复查）`]);
+        }
+      }
+    };
+    try {
+      await invoke("install_node", { onEvent: ch });
+    } catch (err) {
+      // Done 事件是权威来源；这里只在尚未 settled 时兜底
+      if (!settled.current) {
+        settled.current = true;
+        setBusy(false);
+        setLogs((l) => [...l, `✗ ${String(err)}`]);
+      }
+    }
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-8 font-sans">
+      <h1 className="text-2xl font-bold mb-6">Flint</h1>
+      <div className="flex items-center gap-4 mb-4">
+        <span className={node ? "text-emerald-400" : "text-rose-400"}>
+          Node.js: {node ? `✓ ${node}` : "✗ 未安装"}
+        </span>
+        <button onClick={detect} disabled={busy} className="px-3 py-1 rounded bg-slate-700 disabled:opacity-40">
+          检测
+        </button>
+        <button onClick={install} disabled={busy || !!node} className="px-3 py-1 rounded bg-indigo-600 disabled:opacity-40">
+          {busy ? "安装中…" : "安装 Node LTS"}
+        </button>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      {busy && (
+        <div className="w-full bg-slate-800 rounded h-2 mb-4 overflow-hidden">
+          <div className="bg-indigo-500 h-2 transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <pre className="bg-black/40 p-4 rounded text-xs h-80 overflow-auto whitespace-pre-wrap">
+        {logs.join("\n") || "(暂无日志)"}
+      </pre>
+    </div>
   );
 }
-
-export default App;
