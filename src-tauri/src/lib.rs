@@ -8,6 +8,7 @@ pub mod wsl;
 pub mod diagnose;
 pub mod ipc;
 pub mod config;
+pub mod shell;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

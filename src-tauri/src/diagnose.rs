@@ -180,8 +180,10 @@ fn run_doctor(_id: &str, label: &str, env_extra: &[(&str, &str)], timeout_sec: u
             suggestion: None,
         };
     }
-    let mut cmd = Command::new(&argv[0]);
-    cmd.args(&argv[1..]);
+    // Route `.cmd`/`.bat` shims (e.g. opencode) through `cmd /C`.
+    let (program, full_args) = crate::shell::resolve(&argv[0], &argv[1..]);
+    let mut cmd = Command::new(program);
+    cmd.args(&full_args);
     for (k, v) in env_extra {
         cmd.env(k, v);
     }

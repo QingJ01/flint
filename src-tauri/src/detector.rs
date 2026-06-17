@@ -119,7 +119,11 @@ pub fn detect_version(cmd: &str, args: &[String]) -> Result<Option<String>> {
     if !is_installed(cmd) {
         return Ok(None);
     }
-    let out = Command::new(cmd).args(args).output()?;
+    // `which` found it, but on Windows `Command::new(cmd)` still can't run a
+    // `.cmd`/`.bat` shim (CreateProcessW ignores PATHEXT). Route through
+    // `cmd /C` so npm-global tools (pnpm, npm, opencode, codex) actually run.
+    let (program, full_args) = crate::shell::resolve(cmd, args);
+    let out = Command::new(program).args(&full_args).output()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     Ok(extract_version(&stdout).or_else(|| extract_version(&stderr)))
@@ -141,7 +145,23 @@ where
     let mut statuses = Vec::with_capacity(specs.len());
     for spec in specs {
         let args: Vec<String> = spec.args.iter().map(|arg| (*arg).to_string()).collect();
-        let version = probe(spec.cmd, &args)?;
+        // A single broken tool (a PATH entry `which` resolves but that fails
+        // to spawn — a stale shim, or a Windows app-execution alias stub
+        // without the backing app) must NOT abort the whole environment
+        // scan. It is reported as not-installed for that one tool and the
+        // rest keep going. Mirrors the wsl.rs fix where a
+        // present-but-unrunnable binary must not surface as a whole-command
+        // io error.
+        let version = match probe(spec.cmd, &args) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!(
+                    "[detect] probe failed for '{}': {e}; marking not installed",
+                    spec.cmd
+                );
+                None
+            }
+        };
         statuses.push(ToolStatus {
             id: spec.id.to_string(),
             display_name: spec.display_name.to_string(),
@@ -232,5 +252,69 @@ mod tests {
         assert_eq!(statuses[0].id, "git");
         assert!(statuses[0].installed);
         assert_eq!(statuses[0].version.as_deref(), Some("2.45.1"));
+    }
+
+    #[test]
+    fn detect_tools_keeps_going_when_one_probe_errors() {
+        // Regression: a single tool whose version probe returns an io error
+        // (e.g. a PATH entry that `which` resolves but fails to spawn — a
+        // stale shim or a Windows app-execution alias stub) must NOT abort
+        // the whole environment scan. It is reported as not-installed for
+        // that one tool; the rest keep going.
+        use crate::error::FlintError;
+        let specs = [
+            ToolSpec {
+                id: "broken",
+                display_name: "Broken",
+                category: ToolCategory::Runtime,
+                cmd: "broken",
+                args: &["--version"],
+            },
+            ToolSpec {
+                id: "fine",
+                display_name: "Fine",
+                category: ToolCategory::Runtime,
+                cmd: "fine",
+                args: &["--version"],
+            },
+        ];
+        let mut first = true;
+        let statuses = detect_tools_with(&specs, |_cmd, _args| {
+            if first {
+                first = false;
+                Err(FlintError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "program not found",
+                )))
+            } else {
+                Ok(Some("2.45.1".into()))
+            }
+        })
+        .expect("scan must not abort on a per-tool probe error");
+
+        assert_eq!(statuses.len(), 2, "both tools probed");
+        assert!(!statuses[0].installed, "errored tool marked not installed");
+        assert!(
+            statuses[1].installed,
+            "healthy tool still detected after a sibling failed"
+        );
+        assert_eq!(statuses[1].version.as_deref(), Some("2.45.1"));
+    }
+
+    #[test]
+    fn detects_pnpm_cmd_shim_when_present() {
+        // Regression for the Windows `.cmd`/PATHEXT bug: pnpm ships as
+        // `pnpm.cmd` (npm-global shim), so `Command::new("pnpm")` used to
+        // fail with "program not found" and the whole scan aborted. Now
+        // detect_version routes batch shims through `cmd /C`, so a real
+        // pnpm install is detected with its version.
+        match detect_version("pnpm", &["--version".to_string()]) {
+            Ok(Some(v)) => assert!(
+                v.starts_with(|c: char| c.is_ascii_digit()),
+                "unexpected pnpm version: {v}"
+            ),
+            Ok(None) => { /* pnpm not on this machine — nothing to assert */ }
+            Err(e) => panic!("detect_version must be best-effort, got: {e:?}"),
+        }
     }
 }

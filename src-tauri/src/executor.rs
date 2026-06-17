@@ -24,8 +24,13 @@ pub async fn run(argv: &[String], _on_cancel: Option<()>) -> Result<mpsc::Receiv
         return Err(FlintError::Other("empty argv".into()));
     }
     let (tx, rx) = mpsc::channel::<StreamEvent>(64);
-    let mut cmd = Command::new(&argv[0]);
-    cmd.args(&argv[1..]);
+    // Route Windows `.cmd`/`.bat` shims (npm, pnpm, opencode, codex, …)
+    // through `cmd /C`; everything else gets its resolved full path. Without
+    // this, a recipe step like `npm install -g X` fails with "program not
+    // found" because CreateProcessW ignores PATHEXT. See shell::resolve.
+    let (program, args) = crate::shell::resolve(&argv[0], &argv[1..]);
+    let mut cmd = Command::new(program);
+    cmd.args(&args);
     cmd.stdout(std::process::Stdio::piped())
        .stderr(std::process::Stdio::piped())
        .kill_on_drop(true);
