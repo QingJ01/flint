@@ -1,1 +1,116 @@
 @import "tailwindcss";
+
+@theme {
+  /* Surfaces */
+  --color-cream: #faf9f5;
+  --color-cream-deep: #f4f1e8;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f7f4ec;
+
+  /* Ink */
+  --color-ink: #1f1e1b;
+  --color-ink-muted: #5c5a55;
+  --color-ink-faint: #8a8680;
+
+  /* Lines */
+  --color-line: #ebe6db;
+  --color-line-strong: #d6d0c2;
+
+  /* Accents */
+  --color-accent: #cc785c;
+  --color-accent-deep: #b5634a;
+  --color-accent-soft: #f3e3d9;
+
+  /* States */
+  --color-success: #1f7a5b;
+  --color-success-soft: #dceee5;
+  --color-danger: #c5533f;
+  --color-danger-soft: #f3dad2;
+  --color-warn: #b8862b;
+
+  /* Log panel */
+  --color-log-bg: #1a1916;
+  --color-log-text: #e8e4da;
+  --color-log-faint: #6e6a62;
+  --color-log-ok: #6fcf97;
+  --color-log-err: #e89080;
+  --color-log-warn: #e3b66c;
+  --color-log-info: #9bcdcd;
+
+  /* Type */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas,
+    "Roboto Mono", monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Hide the default Tailwind focus ring on selects and buttons; we use a
+   subtle inset instead. */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Custom scrollbar styling for the log panel to feel less "system default". */
+.log-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.log-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.log-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-log-faint);
+  border-radius: 4px;
+}
+.log-scroll::-webkit-scrollbar-thumb:hover {
+  background: #8a8680;
+}
+
+/* Gentle pulse for the in-progress status dot. */
+@keyframes flint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 4px transparent;
+    opacity: 0.6;
+  }
+}
+.dot-pulse {
+  animation: flint-pulse 1.6s ease-in-out infinite;
+}
+
+/* Subtle fade-in for cards on mount. */
+@keyframes flint-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.card-enter {
+  animation: flint-fade-in 0.25s ease-out both;
+}
