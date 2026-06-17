@@ -120,6 +120,46 @@ fn parse_kernel(s: &str) -> Option<String> {
     None
 }
 
+/// Decode `wsl.exe` stdout/stderr. `wsl.exe` emits **UTF-16LE** on Windows
+/// (commonly with a leading `FF FE` BOM); decoding those bytes as UTF-8
+/// produces mojibake that then breaks the Chinese keyword matching in
+/// [`parse_wsl_status`] and shows garbage in the UI's `raw` field. Detect
+/// UTF-16LE (BOM or the NUL-byte signature of UTF-16 ASCII) and decode
+/// correctly; fall back to UTF-8 for the rare UTF-8 case.
+fn decode_wsl_output(bytes: &[u8]) -> String {
+    let stripped = if bytes.starts_with(&[0xFF, 0xFE]) {
+        &bytes[2..]
+    } else {
+        bytes
+    };
+    if looks_like_utf16le(stripped) {
+        let units: Vec<u16> = stripped
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        if let Ok(s) = String::from_utf16(&units) {
+            return s;
+        }
+    }
+    String::from_utf8_lossy(stripped).to_string()
+}
+
+/// Heuristic: even length + enough NUL bytes at odd positions signals UTF-16LE
+/// (ASCII text in UTF-16LE is `X 00 X 00 …`). `wsl --status` always mixes in
+/// ASCII paths/URLs/version numbers, so this triggers reliably even when the
+/// surrounding text is localized Chinese.
+fn looks_like_utf16le(bytes: &[u8]) -> bool {
+    if bytes.len() < 2 || bytes.len() % 2 != 0 {
+        return false;
+    }
+    let nul_at_odd = bytes
+        .iter()
+        .enumerate()
+        .filter(|(i, b)| *i % 2 == 1 && **b == 0)
+        .count();
+    nul_at_odd * 4 >= bytes.len()
+}
+
 /// Run `wsl --status` and return the parsed status.
 ///
 /// `wsl.exe` can be on PATH (Windows 10+ ships it) but the WSL feature can
@@ -152,8 +192,8 @@ pub fn detect_wsl() -> Result<WslStatus> {
             });
         }
     };
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let stdout = decode_wsl_output(&out.stdout);
+    let stderr = decode_wsl_output(&out.stderr);
     // If wsl.exe ran but printed a "feature not enabled" message, treat as
     // NotInstalled. Otherwise parse the output normally.
     if !out.status.success()
@@ -245,5 +285,31 @@ mod tests {
         // Chinese variant of the "feature not enabled" message.
         let s = parse_wsl_status("", "适用于 Linux 的 Windows 子系统功能没有启用。", false);
         assert_eq!(s.state, WslState::NotInstalled);
+    }
+
+    #[test]
+    fn decodes_utf16le_wsl_output_with_bom() {
+        // `wsl.exe` emits UTF-16LE, usually with a leading FF FE BOM. The
+        // old `from_utf8_lossy` decode produced mojibake here.
+        let text = "适用于 Linux 的 Windows 子系统没有启用。";
+        let mut bytes = vec![0xFF, 0xFE];
+        for u in text.encode_utf16() {
+            bytes.extend_from_slice(&u.to_le_bytes());
+        }
+        assert_eq!(decode_wsl_output(&bytes), text);
+    }
+
+    #[test]
+    fn decodes_utf16le_wsl_output_without_bom() {
+        // No BOM — detected via the odd-position-NUL heuristic (ASCII text).
+        let text = "Default Distribution: Ubuntu";
+        let bytes: Vec<u8> = text.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        assert_eq!(decode_wsl_output(&bytes), text);
+    }
+
+    #[test]
+    fn decode_falls_back_to_utf8_for_plain_ascii() {
+        // Plain UTF-8/ASCII with no NULs stays as-is (no false UTF-16 decode).
+        assert_eq!(decode_wsl_output(b"plain ascii output"), "plain ascii output");
     }
 }
