@@ -1,0 +1,11 @@
+[meta]
+id = "vibecoder-stack"
+display_name = "Vibecoder 全家桶"
+description = "Node + Bun + Git + GitHub CLI + Claude Code + OpenCode + Cursor + pnpm。AI 编程开箱即用。"
+emoji = "🤖"
+
+[tools]
+ids = ["node", "bun", "git", "github-cli", "claude-code", "opencode", "cursor", "pnpm"]
+
+[tools.params]
+node = { node_version = "lts-latest" }

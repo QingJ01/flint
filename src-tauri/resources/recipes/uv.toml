@@ -1,0 +1,27 @@
+[meta]
+id = "uv"
+display_name = "uv"
+category = "runtime"
+
+# uv（Astral 公司的 Python 包管理器）官方独立 PowerShell 安装器（用户级，零提权）。
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://astral.sh/uv/install.ps1 | iex"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"] },
+]
+
+[detect.windows]
+cmd = "uv"
+args = ["--version"]

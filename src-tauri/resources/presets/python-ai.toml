@@ -1,0 +1,11 @@
+[meta]
+id = "python-ai"
+display_name = "Python AI 开发者"
+description = "Python 3.12+ + uv + Git + GitHub CLI + Cursor。数据科学 / LLM 脚本快速上手。"
+emoji = "🐍"
+
+[tools]
+ids = ["python", "uv", "git", "github-cli", "cursor"]
+
+[tools.params]
+python = { python_version = "3.12.7" }

@@ -85,6 +85,27 @@ pub fn tool_catalog() -> &'static [ToolSpec] {
             cmd: "codex",
             args: &["--version"],
         },
+        ToolSpec {
+            id: "cursor",
+            display_name: "Cursor",
+            category: ToolCategory::AiTool,
+            cmd: "cursor",
+            args: &["--version"],
+        },
+        ToolSpec {
+            id: "pnpm",
+            display_name: "pnpm",
+            category: ToolCategory::Runtime,
+            cmd: "pnpm",
+            args: &["--version"],
+        },
+        ToolSpec {
+            id: "uv",
+            display_name: "uv",
+            category: ToolCategory::Runtime,
+            cmd: "uv",
+            args: &["--version"],
+        },
     ]
 }
 
@@ -169,6 +190,9 @@ mod tests {
             "claude-code",
             "opencode",
             "codex-cli",
+            "cursor",
+            "pnpm",
+            "uv",
         ] {
             assert!(ids.contains(&expected), "missing {expected} in tool catalog");
         }

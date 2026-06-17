@@ -1,0 +1,8 @@
+[meta]
+id = "claude-minimal"
+display_name = "Claude Code 极速包"
+description = "只装 Claude Code。最小依赖、零配置。适合已经手动装好 Node 的老用户。"
+emoji = "⚡"
+
+[tools]
+ids = ["claude-code"]

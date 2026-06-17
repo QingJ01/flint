@@ -1,0 +1,28 @@
+[meta]
+id = "cursor"
+display_name = "Cursor"
+category = "ai-tool"
+
+# Cursor 是带 AI 功能的 VSCode 衍生品，Windows 上是 NSIS 安装包。
+# 用 `/S` 静默安装，免 UAC（如果之前已装过，NSIS 也会走更新流程）。
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://cursor.com/api/download?os=windows' -OutFile \"$env:TEMP\\CursorSetup.exe\"; & \"$env:TEMP\\CursorSetup.exe\" /S"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://cursor.com/api/download?os=mac -o /tmp/Cursor.dmg && hdiutil attach /tmp/Cursor.dmg -nobrowse -quiet && cp -R \"/Volumes/Cursor/Cursor.app\" /Applications/ && hdiutil detach \"/Volumes/Cursor\" -quiet"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://cursor.com/api/download?os=linux-x64 -o /tmp/cursor.AppImage && chmod +x /tmp/cursor.AppImage && sudo mv /tmp/cursor.AppImage /opt/cursor.AppImage"] },
+]
+
+[detect.windows]
+cmd = "cursor"
+args = ["--version"]

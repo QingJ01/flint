@@ -1,0 +1,12 @@
+[meta]
+id = "fullstack-bundle"
+display_name = "全栈新手包"
+description = "Node + Bun + Python + Git + GitHub CLI + pnpm + uv。前后端通吃。"
+emoji = "🌐"
+
+[tools]
+ids = ["node", "bun", "python", "git", "github-cli", "pnpm", "uv"]
+
+[tools.params]
+node = { node_version = "lts-latest" }
+python = { python_version = "3.12.7" }

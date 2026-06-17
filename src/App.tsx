@@ -28,10 +28,24 @@ type ToolMeta = {
   parameters: ToolParameterMeta[];
 };
 
+type PresetMeta = {
+  id: string;
+  display_name: string;
+  description: string;
+  emoji: string;
+};
+
+type PresetFull = {
+  meta: PresetMeta;
+  tools: { ids: string[]; params: Record<string, Record<string, string>> };
+};
+
 type InstallEvent =
   | { type: "Log"; line: string }
   | { type: "Progress"; pct: number }
   | { type: "Done"; ok: boolean; version: string | null; error: string | null };
+
+type View = "dashboard" | "presets";
 
 const categoryLabel: Record<ToolCategory, string> = {
   runtime: "运行时与基础工具",
@@ -47,7 +61,6 @@ function statusText(tool: ToolStatus) {
 
 type ParamMap = Record<string, Record<string, string>>;
 
-/** Maps a log line to a CSS color class based on its leading tag. */
 function logClass(line: string): string {
   if (line.startsWith("[err]") || line.startsWith("✗") || line.startsWith("[error]"))
     return "text-log-err";
@@ -59,14 +72,25 @@ function logClass(line: string): string {
 }
 
 export default function App() {
+  const [view, setView] = useState<View>("dashboard");
   const [tools, setTools] = useState<ToolStatus[]>([]);
   const [meta, setMeta] = useState<ToolMeta[]>([]);
+  const [presets, setPresets] = useState<PresetMeta[]>([]);
   const [params, setParams] = useState<ParamMap>({});
   const [busy, setBusy] = useState(false);
   const [busyTool, setBusyTool] = useState<string | null>(null);
   const [pct, setPct] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [presetProgress, setPresetProgress] = useState<{
+    presetName: string;
+    index: number;
+    total: number;
+    currentTool: string;
+    succeeded: string[];
+    failed: string[];
+    skipped: string[];
+  } | null>(null);
   const settled = useRef(false);
   const logEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -89,19 +113,21 @@ export default function App() {
     if (busy) return;
     setRefreshing(true);
     try {
-      const [status, m] = await Promise.all([
+      const [status, m, p] = await Promise.all([
         invoke<ToolStatus[]>("detect_environment"),
         invoke<ToolMeta[]>("list_installable_tools"),
+        invoke<PresetMeta[]>("list_presets"),
       ]);
       setTools(status);
       setMeta(m);
+      setPresets(p);
       setParams((cur) => {
         const next: ParamMap = { ...cur };
         for (const tool of m) {
           const slot = (next[tool.id] ??= {});
-          for (const p of tool.parameters) {
-            if (slot[p.key] === undefined && p.default) {
-              slot[p.key] = p.default;
+          for (const param of tool.parameters) {
+            if (slot[param.key] === undefined && param.default) {
+              slot[param.key] = param.default;
             }
           }
         }
@@ -122,53 +148,141 @@ export default function App() {
     logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [logs]);
 
-  async function installTool(id: string) {
-    if (busy) return;
-    settled.current = false;
-    setBusy(true);
-    setBusyTool(id);
-    setPct(0);
-    setLogs([]);
-
-    const ch = new Channel<InstallEvent>();
-    ch.onmessage = (event) => {
-      if (event.type === "Log") {
-        setLogs((cur) => [...cur, event.line]);
-        return;
-      }
-      if (event.type === "Progress") {
-        setPct(event.pct);
-        return;
-      }
-      if (settled.current) return;
-      settled.current = true;
-      setBusy(false);
-      setBusyTool(null);
-      setPct(100);
-      if (event.ok) {
-        const ver = event.version ? ` · v${event.version}` : "";
-        setLogs((cur) => [...cur, `✓ 安装成功${ver}`]);
-      } else {
-        setLogs((cur) => [...cur, `✗ ${event.error ?? "安装失败"}`]);
-      }
-      void refresh();
-    };
-
-    try {
-      await invoke("install_tool", {
-        id,
-        params: params[id] ?? {},
-        onEvent: ch,
-      });
-    } catch (err) {
-      if (!settled.current) {
+  /** Run a single tool's install via the backend command and resolve when
+   *  the `Done` event arrives. Returns `true` on success. */
+  function runOneInstall(
+    id: string,
+    toolParams: Record<string, string>,
+  ): Promise<{ ok: boolean; version: string | null; error: string | null }> {
+    return new Promise((resolve) => {
+      settled.current = false;
+      setBusyTool(id);
+      setPct(0);
+      const ch = new Channel<InstallEvent>();
+      ch.onmessage = (event) => {
+        if (event.type === "Log") {
+          setLogs((cur) => [...cur, event.line]);
+          return;
+        }
+        if (event.type === "Progress") {
+          setPct(event.pct);
+          return;
+        }
+        if (settled.current) return;
         settled.current = true;
-        setBusy(false);
-        setBusyTool(null);
-        setLogs((cur) => [...cur, `[error] ${String(err)}`]);
-        void refresh();
+        setPct(100);
+        resolve({ ok: event.ok, version: event.version, error: event.error });
+      };
+      invoke("install_tool", { id, params: toolParams, onEvent: ch }).catch(
+        (err) => {
+          if (!settled.current) {
+            settled.current = true;
+            resolve({ ok: false, version: null, error: String(err) });
+          }
+        },
+      );
+    });
+  }
+
+  async function installOne(id: string) {
+    if (busy) return;
+    setBusy(true);
+    setLogs([]);
+    const res = await runOneInstall(id, params[id] ?? {});
+    setBusy(false);
+    setBusyTool(null);
+    if (res.ok) {
+      const ver = res.version ? ` · v${res.version}` : "";
+      setLogs((cur) => [...cur, `✓ 安装成功${ver}`]);
+    } else {
+      setLogs((cur) => [...cur, `✗ ${res.error ?? "安装失败"}`]);
+    }
+    void refresh();
+  }
+
+  async function applyPreset(presetId: string) {
+    if (busy) return;
+    let full: PresetFull;
+    try {
+      full = await invoke<PresetFull>("get_preset", { id: presetId });
+    } catch (e) {
+      setLogs((cur) => [
+        ...cur,
+        `[error] 无法加载预设 ${presetId}：${String(e)}`,
+      ]);
+      return;
+    }
+
+    setBusy(true);
+    setLogs([]);
+    const succeeded: string[] = [];
+    const failed: string[] = [];
+    const skipped: string[] = [];
+
+    setPresetProgress({
+      presetName: full.meta.display_name,
+      index: 0,
+      total: full.tools.ids.length,
+      currentTool: full.tools.ids[0] ?? "",
+      succeeded,
+      failed,
+      skipped,
+    });
+
+    const freshStatus = new Map(statusById);
+    for (let i = 0; i < full.tools.ids.length; i++) {
+      const id = full.tools.ids[i];
+      setPresetProgress((cur) =>
+        cur ? { ...cur, index: i, currentTool: id } : cur,
+      );
+
+      if (freshStatus.get(id)?.installed) {
+        skipped.push(id);
+        setLogs((cur) => [
+          ...cur,
+          `[skip] ${id} 已安装，跳过`,
+        ]);
+        continue;
+      }
+
+      const toolParams = {
+        ...(params[id] ?? {}),
+        ...(full.tools.params[id] ?? {}),
+      };
+      setLogs((cur) => [...cur, `[preset] ▶ ${id}`]);
+      const res = await runOneInstall(id, toolParams);
+      if (res.ok) {
+        succeeded.push(id);
+        setLogs((cur) => [
+          ...cur,
+          `✓ ${id}${res.version ? ` · v${res.version}` : ""}`,
+        ]);
+        // optimistic local status update
+        freshStatus.set(id, {
+          id,
+          display_name: id,
+          category: "runtime",
+          installed: true,
+          version: res.version,
+        });
+      } else {
+        failed.push(id);
+        setLogs((cur) => [
+          ...cur,
+          `✗ ${id}：${res.error ?? "失败"}`,
+        ]);
       }
     }
+
+    setBusy(false);
+    setBusyTool(null);
+    setLogs((cur) => [
+      ...cur,
+      ``,
+      `[preset] 总结：✓ ${succeeded.length} · ✗ ${failed.length} · 跳过 ${skipped.length}`,
+    ]);
+    setPresetProgress(null);
+    void refresh();
   }
 
   function setParam(toolId: string, key: string, value: string) {
@@ -181,8 +295,7 @@ export default function App() {
   return (
     <main className="min-h-screen bg-cream text-ink">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-8 py-8">
-        {/* Top bar — wordmark + counter + re-detect */}
-        <header className="flex items-end justify-between gap-6 pb-7">
+        <header className="flex items-end justify-between gap-6 pb-6">
           <div>
             <h1 className="font-sans text-[26px] font-semibold leading-none tracking-[-0.01em] text-ink">
               Flint
@@ -211,7 +324,22 @@ export default function App() {
           </div>
         </header>
 
-        {/* Slim top progress bar — only visible while a tool is installing */}
+        {/* Tab bar */}
+        <nav className="mb-5 flex items-center gap-1 border-b border-line">
+          <TabButton
+            active={view === "dashboard"}
+            onClick={() => setView("dashboard")}
+            label="仪表盘"
+          />
+          <TabButton
+            active={view === "presets"}
+            onClick={() => setView("presets")}
+            label="预设"
+            badge={presets.length}
+          />
+        </nav>
+
+        {/* Slim top progress bar */}
         <div
           aria-hidden
           className="-mx-8 mb-2 h-[2px] overflow-hidden bg-transparent transition-opacity"
@@ -223,132 +351,148 @@ export default function App() {
           />
         </div>
 
-        {/* Body: cards on the left, log sidebar on the right */}
         <section className="grid flex-1 gap-6 lg:grid-cols-[1fr_360px]">
           <div className="flex flex-col gap-8">
-            {categoryOrder.map((category) => {
-              const sectionMetas = meta.filter((m) => m.category === category);
-              if (sectionMetas.length === 0) return null;
-              return (
-                <section key={category}>
-                  <div className="mb-3 flex items-baseline justify-between border-b border-line pb-2">
-                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
-                      {categoryLabel[category]}
-                    </h2>
-                    <span className="text-[11px] tabular-nums text-ink-faint">
-                      {installedForSection(category)} / {totalForSection(category)} 已就绪
-                    </span>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {sectionMetas.map((m) => {
-                      const status = statusById.get(m.id);
-                      const installed = status?.installed ?? false;
-                      const isThisBusy = busyTool === m.id;
-                      const isOtherBusy = busy && !isThisBusy;
-                      return (
-                        <article
-                          key={m.id}
-                          className="card-enter group relative flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(31,30,27,0.03)] transition hover:border-line-strong hover:shadow-[0_2px_6px_rgba(31,30,27,0.05)]"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <h3 className="truncate text-[15px] font-medium text-ink">
-                                {m.display_name}
-                              </h3>
-                              <p
+            {view === "dashboard" ? (
+              categoryOrder.map((category) => {
+                const sectionMetas = meta.filter(
+                  (m) => m.category === category,
+                );
+                if (sectionMetas.length === 0) return null;
+                return (
+                  <section key={category}>
+                    <div className="mb-3 flex items-baseline justify-between border-b border-line pb-2">
+                      <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
+                        {categoryLabel[category]}
+                      </h2>
+                      <span className="text-[11px] tabular-nums text-ink-faint">
+                        {installedForSection(category)} /{" "}
+                        {totalForSection(category)} 已就绪
+                      </span>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {sectionMetas.map((m) => {
+                        const status = statusById.get(m.id);
+                        const installed = status?.installed ?? false;
+                        const isThisBusy = busyTool === m.id;
+                        const isOtherBusy = busy && !isThisBusy;
+                        return (
+                          <article
+                            key={m.id}
+                            className="card-enter group relative flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(31,30,27,0.03)] transition hover:border-line-strong hover:shadow-[0_2px_6px_rgba(31,30,27,0.05)]"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <h3 className="truncate text-[15px] font-medium text-ink">
+                                  {m.display_name}
+                                </h3>
+                                <p
+                                  className={
+                                    "mt-0.5 font-mono text-[12px] " +
+                                    (installed
+                                      ? "text-success"
+                                      : status
+                                        ? "text-danger"
+                                        : "text-ink-faint")
+                                  }
+                                >
+                                  {status ? statusText(status) : "检测中…"}
+                                </p>
+                              </div>
+                              <span
+                                aria-label={installed ? "installed" : "missing"}
                                 className={
-                                  "mt-0.5 font-mono text-[12px] " +
-                                  (installed
-                                    ? "text-success"
-                                    : status
-                                      ? "text-danger"
-                                      : "text-ink-faint")
+                                  "mt-1 h-2 w-2 shrink-0 rounded-full " +
+                                  (isThisBusy
+                                    ? "bg-accent dot-pulse text-accent"
+                                    : installed
+                                      ? "bg-success"
+                                      : status
+                                        ? "bg-danger"
+                                        : "bg-ink-faint/40")
+                                }
+                              />
+                            </div>
+                            {!installed && m.parameters.length > 0 && (
+                              <div className="flex flex-col gap-2">
+                                {m.parameters.map((p) => (
+                                  <label key={p.key} className="block">
+                                    <span className="block text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                                      {p.label}
+                                    </span>
+                                    <div className="relative mt-1">
+                                      <select
+                                        className="h-8 w-full appearance-none rounded-md border border-line bg-surface pl-2.5 pr-7 text-[12.5px] text-ink transition hover:border-line-strong focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                                        value={
+                                          params[m.id]?.[p.key] ??
+                                          p.default ??
+                                          p.options[0]?.value ??
+                                          ""
+                                        }
+                                        onChange={(e) =>
+                                          setParam(
+                                            m.id,
+                                            p.key,
+                                            e.target.value,
+                                          )
+                                        }
+                                        disabled={busy}
+                                      >
+                                        {p.options.map((opt) => (
+                                          <option
+                                            key={opt.value}
+                                            value={opt.value}
+                                          >
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <ChevronIcon className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-ink-faint" />
+                                    </div>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                            {!installed && (
+                              <button
+                                type="button"
+                                onClick={() => void installOne(m.id)}
+                                disabled={busy}
+                                className={
+                                  "mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition " +
+                                  (isThisBusy
+                                    ? "bg-accent text-white shadow-[0_1px_2px_rgba(204,120,92,0.4)]"
+                                    : isOtherBusy
+                                      ? "bg-ink/30 text-white/70 cursor-not-allowed"
+                                      : "bg-ink text-white hover:bg-ink/90 active:bg-ink/95 shadow-[0_1px_2px_rgba(31,30,27,0.18)]")
                                 }
                               >
-                                {status ? statusText(status) : "检测中…"}
-                              </p>
-                            </div>
-                            <span
-                              aria-label={installed ? "installed" : "missing"}
-                              className={
-                                "mt-1 h-2 w-2 shrink-0 rounded-full " +
-                                (isThisBusy
-                                  ? "bg-accent dot-pulse text-accent"
-                                  : installed
-                                    ? "bg-success"
-                                    : status
-                                      ? "bg-danger"
-                                      : "bg-ink-faint/40")
-                              }
-                            />
-                          </div>
-
-                          {!installed && m.parameters.length > 0 && (
-                            <div className="flex flex-col gap-2">
-                              {m.parameters.map((p) => (
-                                <label key={p.key} className="block">
-                                  <span className="block text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">
-                                    {p.label}
-                                  </span>
-                                  <div className="relative mt-1">
-                                    <select
-                                      className="h-8 w-full appearance-none rounded-md border border-line bg-surface pl-2.5 pr-7 text-[12.5px] text-ink transition hover:border-line-strong focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                                      value={
-                                        params[m.id]?.[p.key] ??
-                                        p.default ??
-                                        p.options[0]?.value ??
-                                        ""
-                                      }
-                                      onChange={(e) =>
-                                        setParam(m.id, p.key, e.target.value)
-                                      }
-                                      disabled={busy}
-                                    >
-                                      {p.options.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>
-                                          {opt.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <ChevronIcon className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-ink-faint" />
-                                  </div>
-                                </label>
-                              ))}
-                            </div>
-                          )}
-
-                          {!installed && (
-                            <button
-                              type="button"
-                              onClick={() => void installTool(m.id)}
-                              disabled={busy}
-                              className={
-                                "mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition " +
-                                (isThisBusy
-                                  ? "bg-accent text-white shadow-[0_1px_2px_rgba(204,120,92,0.4)]"
-                                  : isOtherBusy
-                                    ? "bg-ink/30 text-white/70 cursor-not-allowed"
-                                    : "bg-ink text-white hover:bg-ink/90 active:bg-ink/95 shadow-[0_1px_2px_rgba(31,30,27,0.18)]")
-                              }
-                            >
-                              {isThisBusy ? (
-                                <>
-                                  <SpinnerIcon className="h-3 w-3 animate-spin" />
-                                  安装中…
-                                </>
-                              ) : (
-                                "安装"
-                              )}
-                            </button>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })}
+                                {isThisBusy ? (
+                                  <>
+                                    <SpinnerIcon className="h-3 w-3 animate-spin" />
+                                    安装中…
+                                  </>
+                                ) : (
+                                  "安装"
+                                )}
+                              </button>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })
+            ) : (
+              <PresetsView
+                presets={presets}
+                statusById={statusById}
+                onApply={(id) => void applyPreset(id)}
+                busy={busy}
+                presetProgress={presetProgress}
+              />
+            )}
           </div>
 
           {/* Log sidebar */}
@@ -361,13 +505,15 @@ export default function App() {
                 </h2>
               </div>
               <span className="font-mono text-[11px] tabular-nums text-log-faint">
-                {busy
-                  ? busyTool
-                    ? `${busyTool} · ${pct}%`
-                    : `${pct}%`
-                  : logs.length > 0
-                    ? `${logs.length} 行`
-                    : "空闲"}
+                {presetProgress
+                  ? `${presetProgress.index + 1}/${presetProgress.total} · ${presetProgress.currentTool}`
+                  : busy
+                    ? busyTool
+                      ? `${busyTool} · ${pct}%`
+                      : `${pct}%`
+                    : logs.length > 0
+                      ? `${logs.length} 行`
+                      : "空闲"}
               </span>
             </div>
             <pre className="log-scroll h-[560px] overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[11.5px] leading-[1.65]">
@@ -389,10 +535,128 @@ export default function App() {
 
         <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-[11px] text-ink-faint">
           <span>Flint · 一键点燃开发环境</span>
-          <span className="font-mono">v0.1.0 · slice 1</span>
+          <span className="font-mono">v0.2.0 · slice 2</span>
         </footer>
       </div>
     </main>
+  );
+}
+
+/* ---------- Presets view ---------- */
+
+function PresetsView(props: {
+  presets: PresetMeta[];
+  statusById: Map<string, ToolStatus>;
+  onApply: (id: string) => void;
+  busy: boolean;
+  presetProgress: {
+    presetName: string;
+    index: number;
+    total: number;
+    currentTool: string;
+    succeeded: string[];
+    failed: string[];
+    skipped: string[];
+  } | null;
+}) {
+  const { presets, onApply, busy, presetProgress } = props;
+  if (presets.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-line bg-surface-sunken p-8 text-center">
+        <p className="text-[13px] text-ink-muted">暂无可用预设。</p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {presets.map((p) => {
+        const isThis = presetProgress?.presetName === p.display_name;
+        return (
+          <article
+            key={p.id}
+            className="card-enter flex flex-col gap-3 rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(31,30,27,0.03)] transition hover:border-line-strong"
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-3xl leading-none">{p.emoji || "📦"}</span>
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-[15px] font-medium text-ink">
+                  {p.display_name}
+                </h3>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-ink-muted">
+                  {p.description}
+                </p>
+              </div>
+            </div>
+            <div className="mt-auto flex items-center justify-between pt-2">
+              <span className="text-[11px] text-ink-faint">
+                {isThis
+                  ? `${presetProgress!.index + 1}/${presetProgress!.total} · ${presetProgress!.currentTool}`
+                  : "一键组合安装"}
+              </span>
+              <button
+                type="button"
+                onClick={() => onApply(p.id)}
+                disabled={busy}
+                className={
+                  "inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium transition " +
+                  (isThis
+                    ? "bg-accent text-white shadow-[0_1px_2px_rgba(204,120,92,0.4)]"
+                    : busy
+                      ? "bg-ink/30 text-white/70 cursor-not-allowed"
+                      : "bg-ink text-white hover:bg-ink/90 shadow-[0_1px_2px_rgba(31,30,27,0.18)]")
+                }
+              >
+                {isThis ? (
+                  <>
+                    <SpinnerIcon className="h-3 w-3 animate-spin" />
+                    安装中…
+                  </>
+                ) : (
+                  "应用预设"
+                )}
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------- Tab button ---------- */
+
+function TabButton(props: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  badge?: number;
+}) {
+  const { active, onClick, label, badge } = props;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "relative -mb-px inline-flex h-9 items-center gap-1.5 border-b-2 px-3 text-[13px] font-medium transition " +
+        (active
+          ? "border-accent text-ink"
+          : "border-transparent text-ink-muted hover:text-ink")
+      }
+    >
+      {label}
+      {typeof badge === "number" && badge > 0 && (
+        <span
+          className={
+            "ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium tabular-nums " +
+            (active
+              ? "bg-accent-soft text-accent-deep"
+              : "bg-surface-sunken text-ink-faint")
+          }
+        >
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }
 

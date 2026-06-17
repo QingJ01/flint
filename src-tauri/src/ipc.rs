@@ -1,3 +1,4 @@
+use crate::preset::{self, Preset, PresetMeta};
 use crate::recipe::ParameterOption;
 use crate::{
     config,
@@ -40,6 +41,19 @@ pub struct ToolParameterMeta {
 #[tauri::command]
 pub async fn detect_environment() -> Result<Vec<ToolStatus>, String> {
     detector::detect_environment().map_err(|e| e.to_string())
+}
+
+/// Enumerate every preset at `resources/presets/*.toml`.
+#[tauri::command]
+pub async fn list_presets() -> Result<Vec<PresetMeta>, String> {
+    Ok(preset::Preset::list_available())
+}
+
+/// Return the full preset (including the tool id list and default params)
+/// for a given preset id. The frontend uses this to drive batch install.
+#[tauri::command]
+pub async fn get_preset(id: String) -> Result<Preset, String> {
+    Preset::load(&id)
 }
 
 /// Enumerate every recipe on disk as a `ToolMeta` for the frontend.

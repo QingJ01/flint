@@ -1,0 +1,27 @@
+[meta]
+id = "pnpm"
+display_name = "pnpm"
+category = "runtime"
+
+# pnpm 官方独立 PowerShell 安装器（用户级，零提权）。
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://get.pnpm.io/install.ps1 | iex"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://get.pnpm.io/install.sh | sh -"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://get.pnpm.io/install.sh | sh -"] },
+]
+
+[detect.windows]
+cmd = "pnpm"
+args = ["--version"]

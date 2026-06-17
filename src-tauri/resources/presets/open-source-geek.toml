@@ -1,0 +1,8 @@
+[meta]
+id = "open-source-geek"
+display_name = "开源极客包"
+description = "Bun + OpenCode + Git + GitHub CLI。全部开源 / 免费，适合不想用闭源 AI 工具的开发者。"
+emoji = "🔓"
+
+[tools]
+ids = ["bun", "opencode", "git", "github-cli"]
