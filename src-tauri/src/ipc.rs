@@ -3,10 +3,11 @@ use crate::{
     config,
     detector::{self, ToolCategory, ToolStatus},
     executor::{self, StreamEvent},
-    recipe::Recipe,
+    recipe::{self, Recipe},
 };
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
 use tauri::ipc::Channel;
 
 /// Streamed events to the frontend. The `#[serde(tag = "type")]` makes
@@ -169,6 +170,32 @@ pub async fn install_tool(
             }
         }
         _ => {}
+    }
+
+    // Recipe-declared PATH additions (`add_to_user_path` entries in the
+    // `[install.<platform>]` block). Each entry may have `{name}`
+    // placeholders (already substituted) and `%VAR%` env vars (expanded
+    // here against the current process env).
+    let env_snapshot: HashMap<String, String> = std::env::vars().collect();
+    for raw in &substituted_install.add_to_user_path {
+        let expanded = recipe::expand_env_vars(raw, &env_snapshot);
+        match config::add_to_user_path(Path::new(&expanded)) {
+            Ok(true) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[ok] 已加入用户 PATH：{expanded}"),
+                });
+            }
+            Ok(false) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[skip] 已在用户 PATH 中：{expanded}"),
+                });
+            }
+            Err(e) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[warn] 加入用户 PATH 失败（{expanded}）：{e}"),
+                });
+            }
+        }
     }
 
     // Best-effort in-process version check. Note: after a PATH-modifying

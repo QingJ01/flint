@@ -42,6 +42,11 @@ pub struct PlatformInstall {
     #[serde(default)]
     pub requires_elevation: bool,
     pub steps: Vec<Step>,
+    /// Absolute paths (with `%VAR%` placeholders) to add to the user's
+    /// persistent PATH after all install steps succeed. `add_to_user_path`
+    /// is idempotent (de-duped, case-insensitive on Windows).
+    #[serde(default)]
+    pub add_to_user_path: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -107,10 +112,11 @@ impl Recipe {
         metas
     }
 
-    /// Replace `{name}` placeholders in step `cmd` / `args` using `params`.
-    /// Unknown placeholders are left as literal (so a step can include a `{`
-    /// without escaping). Missing param values fall back to the recipe's
-    /// declared `default`. If no value and no default, returns an error.
+    /// Replace `{name}` placeholders in step `cmd` / `args` and in
+    /// `add_to_user_path` entries, using `params`. Unknown placeholders are
+    /// left as literal (so a step can include a `{` without escaping).
+    /// Missing param values fall back to the recipe's declared `default`.
+    /// If no value and no default, returns an error.
     pub fn substitute(&self, params: &HashMap<String, String>) -> Result<Recipe, String> {
         let mut new_install = HashMap::new();
         for (platform, plat_install) in &self.install {
@@ -124,11 +130,17 @@ impl Recipe {
                     .collect::<Result<Vec<_>, _>>()?;
                 new_steps.push(Step { cmd, args });
             }
+            let new_add_to_path = plat_install
+                .add_to_user_path
+                .iter()
+                .map(|p| substitute_placeholders(p, &self.parameters, params))
+                .collect::<Result<Vec<_>, _>>()?;
             new_install.insert(
                 platform.clone(),
                 PlatformInstall {
                     requires_elevation: plat_install.requires_elevation,
                     steps: new_steps,
+                    add_to_user_path: new_add_to_path,
                 },
             );
         }
@@ -203,6 +215,44 @@ fn lookup_value(
         }
     }
     String::new()
+}
+
+/// Expand `%FOO%` placeholders using process environment variables.
+/// Unknown vars are left as literal so a step/path stays informative.
+/// Pure: takes `&std::collections::HashMap<String, String>` so tests can
+/// pass synthetic envs without touching the real process environment.
+pub fn expand_env_vars(input: &str, env: &HashMap<String, String>) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(open) = rest.find('%') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        match after.find('%') {
+            Some(close) => {
+                let key = &after[..close];
+                if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                    // Not a valid %VAR% — keep both `%`s literal.
+                    out.push('%');
+                    out.push_str(&after[..close + 1]);
+                    rest = &after[close + 1..];
+                } else {
+                    let val = env
+                        .get(key)
+                        .cloned()
+                        .unwrap_or_else(|| format!("%{key}%"));
+                    out.push_str(&val);
+                    rest = &after[close + 1..];
+                }
+            }
+            None => {
+                out.push_str(&rest[open..]);
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 #[cfg(test)]
@@ -369,5 +419,79 @@ steps = [ {{ cmd = "echo", args = ["{id}"] }} ]
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    fn env_fixture() -> HashMap<String, String> {
+        let mut h = HashMap::new();
+        h.insert("USERPROFILE".into(), "C:\\Users\\me".into());
+        h.insert("LOCALAPPDATA".into(), "C:\\Users\\me\\AppData\\Local".into());
+        h
+    }
+
+    #[test]
+    fn expand_env_vars_replaces_known_vars() {
+        let env = env_fixture();
+        let s = expand_env_vars("%LOCALAPPDATA%\\Programs\\Python", &env);
+        assert_eq!(s, "C:\\Users\\me\\AppData\\Local\\Programs\\Python");
+    }
+
+    #[test]
+    fn expand_env_vars_leaves_unknown_as_literal() {
+        let env = env_fixture();
+        let s = expand_env_vars("%NOPE%\\bin", &env);
+        assert_eq!(s, "%NOPE%\\bin");
+    }
+
+    #[test]
+    fn expand_env_vars_handles_mixed_text() {
+        let env = env_fixture();
+        let s = expand_env_vars("prefix-%USERPROFILE%-suffix", &env);
+        assert_eq!(s, "prefix-C:\\Users\\me-suffix");
+    }
+
+    #[test]
+    fn expand_env_vars_handles_no_placeholders() {
+        let env = env_fixture();
+        let s = expand_env_vars("plain string", &env);
+        assert_eq!(s, "plain string");
+    }
+
+    #[test]
+    fn expand_env_vars_keeps_lone_percent_literal() {
+        let env = env_fixture();
+        let s = expand_env_vars("100% done", &env);
+        assert_eq!(s, "100% done");
+    }
+
+    const PYTHON_TOML_WITH_PATH: &str = r#"
+[meta]
+id = "python"
+display_name = "Python"
+category = "runtime"
+
+[parameters.python_version]
+label = "Python 版本"
+default = "3.12.7"
+options = [
+  { value = "3.12.7", label = "3.12" },
+]
+
+[install.windows]
+requires_elevation = false
+add_to_user_path = ["%LOCALAPPDATA%\\Programs\\Python\\python-{python_version}"]
+steps = [
+  { cmd = "echo", args = ["install {python_version}"] },
+]
+"#;
+
+    #[test]
+    fn substitute_replaces_placeholders_in_add_to_user_path() {
+        let r: Recipe = toml::from_str(PYTHON_TOML_WITH_PATH).unwrap();
+        let mut params = HashMap::new();
+        params.insert("python_version".into(), "3.12.7".into());
+        let r2 = r.substitute(&params).unwrap();
+        let win = r2.install.get("windows").unwrap();
+        assert_eq!(win.add_to_user_path.len(), 1);
+        assert_eq!(win.add_to_user_path[0], "%LOCALAPPDATA%\\Programs\\Python\\python-3.12.7");
     }
 }
