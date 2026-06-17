@@ -1,5 +1,7 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { CloseIcon, SpinnerIcon } from "./icons";
-import type { DiagnosticReport, Severity } from "./types";
+import type { DiagnosticReport, Finding, Severity } from "./types";
 
 type Props = {
   toolId: string | null;
@@ -10,7 +12,26 @@ type Props = {
 
 export function DiagnosticModal(props: Props) {
   const { toolId, report, loading, onClose } = props;
+  const [keyResult, setKeyResult] = useState<Finding | null>(null);
+  const [keyChecking, setKeyChecking] = useState(false);
   if (!toolId) return null;
+
+  // opt-in：只在用户点按钮时才读 env 并联网校验 key（GET /v1/models，免费）。
+  async function verifyKey() {
+    setKeyChecking(true);
+    try {
+      const f = await invoke<Finding>("verify_anthropic_key");
+      setKeyResult(f);
+    } catch (e) {
+      setKeyResult({
+        severity: "error",
+        message: `校验失败：${String(e)}`,
+        suggestion: null,
+      });
+    } finally {
+      setKeyChecking(false);
+    }
+  }
 
   const summary = report
     ? {
@@ -56,6 +77,42 @@ export function DiagnosticModal(props: Props) {
             <CloseIcon className="h-4 w-4" />
           </button>
         </div>
+
+        {toolId === "claude-code" && (
+          <div className="mt-4 rounded-lg border border-line bg-surface-sunken/40 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12px] text-ink-muted">
+                真实校验 API key 有效性（联网 · 免费）
+              </p>
+              <button
+                type="button"
+                onClick={verifyKey}
+                disabled={keyChecking}
+                className="rounded-md border border-line bg-surface px-2.5 py-1 text-[12px] text-ink transition hover:border-ink-muted disabled:opacity-50"
+              >
+                {keyChecking ? "校验中…" : "验证 Key"}
+              </button>
+            </div>
+            {keyResult && (
+              <div
+                className={
+                  "mt-2 flex items-start gap-2 rounded-md border p-2 " +
+                  findingClass(keyResult.severity)
+                }
+              >
+                <SeverityDot severity={keyResult.severity} />
+                <div className="min-w-0">
+                  <p className="text-[12px] text-ink">{keyResult.message}</p>
+                  {keyResult.suggestion && (
+                    <p className="mt-0.5 text-[11px] text-ink-muted">
+                      💡 {keyResult.suggestion}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-5 max-h-[60vh] overflow-auto">
           {loading ? (

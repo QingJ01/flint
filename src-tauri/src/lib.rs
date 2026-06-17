@@ -26,7 +26,8 @@ pub fn run() {
             ipc::apply_npm_mirror,
             ipc::apply_pip_mirror,
             ipc::apply_domestic_acceleration,
-            ipc::diagnose_tool
+            ipc::diagnose_tool,
+            ipc::verify_anthropic_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

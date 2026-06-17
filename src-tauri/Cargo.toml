@@ -27,6 +27,7 @@ which = "6"
 regex = "1"
 thiserror = "1"
 log = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

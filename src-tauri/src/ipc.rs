@@ -1,4 +1,4 @@
-use crate::diagnose::{self, DiagnosticReport};
+use crate::diagnose::{self, DiagnosticReport, Finding};
 use crate::preset::{self, Preset, PresetMeta};
 use crate::recipe::ParameterOption;
 use crate::wsl::{self, WslStatus};
@@ -111,7 +111,16 @@ pub async fn apply_domestic_acceleration() -> Result<Vec<(String, bool)>, String
 /// as findings with `severity: error`.
 #[tauri::command]
 pub async fn diagnose_tool(tool_id: String) -> Result<DiagnosticReport, String> {
-    diagnose::run_diagnostics(&tool_id).map_err(|e| e.to_string())
+    diagnose::run_diagnostics(&tool_id).await.map_err(|e| e.to_string())
+}
+
+/// Opt-in: validate the Anthropic API key by hitting the (free)
+/// `GET /v1/models` endpoint. Never run automatically — only when the user
+/// clicks the "验证 Key" button. Endpoint + headers verified against the
+/// Anthropic API reference (x-api-key + anthropic-version: 2023-06-01).
+#[tauri::command]
+pub async fn verify_anthropic_key() -> Result<Finding, String> {
+    Ok(diagnose::verify_anthropic_key().await)
 }
 
 /// Trigger the Windows "enable WSL" flow. This is the one operation that
