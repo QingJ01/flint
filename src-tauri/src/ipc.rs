@@ -1,3 +1,4 @@
+use crate::diagnose::{self, DiagnosticReport};
 use crate::preset::{self, Preset, PresetMeta};
 use crate::recipe::ParameterOption;
 use crate::wsl::{self, WslStatus};
@@ -103,6 +104,14 @@ pub async fn apply_domestic_acceleration() -> Result<Vec<(String, bool)>, String
         ("npm".into(), npm),
         ("pip".into(), pip),
     ])
+}
+
+/// Run the diagnostic checks for a given tool and return a structured
+/// report. Never returns an error — internal rule failures are surfaced
+/// as findings with `severity: error`.
+#[tauri::command]
+pub async fn diagnose_tool(tool_id: String) -> Result<DiagnosticReport, String> {
+    diagnose::run_diagnostics(&tool_id).map_err(|e| e.to_string())
 }
 
 /// Trigger the Windows "enable WSL" flow. This is the one operation that

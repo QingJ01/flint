@@ -53,6 +53,17 @@ type MirrorStatus = {
   pip: string | null;
 };
 
+type Severity = "ok" | "warn" | "error";
+type Finding = {
+  severity: Severity;
+  message: string;
+  suggestion: string | null;
+};
+type DiagnosticReport = {
+  tool_id: string;
+  findings: Finding[];
+};
+
 const NPM_MIRRORS: { value: string; label: string }[] = [
   { value: "https://registry.npmjs.org/", label: "官方源 (npmjs.org)" },
   { value: "https://registry.npmmirror.com/", label: "淘宝镜像 (npmmirror.com)" },
@@ -123,6 +134,9 @@ export default function App() {
   const [wslBusy, setWslBusy] = useState(false);
   const [mirror, setMirror] = useState<MirrorStatus | null>(null);
   const [mirrorBusy, setMirrorBusy] = useState(false);
+  const [diagTarget, setDiagTarget] = useState<string | null>(null);
+  const [diagReport, setDiagReport] = useState<DiagnosticReport | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
   const settled = useRef(false);
   const logEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -340,6 +354,34 @@ export default function App() {
     } finally {
       setMirrorBusy(false);
     }
+  }
+
+  async function openDiagnostic(toolId: string) {
+    setDiagTarget(toolId);
+    setDiagReport(null);
+    setDiagLoading(true);
+    try {
+      const r = await invoke<DiagnosticReport>("diagnose_tool", { toolId });
+      setDiagReport(r);
+    } catch (e) {
+      setDiagReport({
+        tool_id: toolId,
+        findings: [
+          {
+            severity: "error",
+            message: `诊断失败：${String(e)}`,
+            suggestion: null,
+          },
+        ],
+      });
+    } finally {
+      setDiagLoading(false);
+    }
+  }
+
+  function closeDiagnostic() {
+    setDiagTarget(null);
+    setDiagReport(null);
   }
 
   async function installOne(id: string) {
@@ -645,6 +687,16 @@ export default function App() {
                                 )}
                               </button>
                             )}
+                            {installed && (
+                              <button
+                                type="button"
+                                onClick={() => void openDiagnostic(m.id)}
+                                className="mt-auto inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[11.5px] font-medium text-ink-muted transition hover:border-line-strong hover:text-ink"
+                              >
+                                <StethoscopeIcon className="h-3 w-3" />
+                                诊断
+                              </button>
+                            )}
                           </article>
                         );
                       })}
@@ -718,9 +770,16 @@ export default function App() {
 
         <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-[11px] text-ink-faint">
           <span>Flint · 一键点燃开发环境</span>
-          <span className="font-mono">v0.4.0 · slice 4</span>
+          <span className="font-mono">v0.5.0 · slice 5</span>
         </footer>
       </div>
+
+      <DiagnosticModal
+        toolId={diagTarget}
+        report={diagReport}
+        loading={diagLoading}
+        onClose={closeDiagnostic}
+      />
     </main>
   );
 }
@@ -1091,6 +1150,167 @@ function RocketIcon(props: { className?: string }) {
       <path d="M9 2c4 0 5 1 5 5l-4 4-3-3 4-4c0-1-1-2-2-2z" />
       <path d="M7 8 3 12l1 1 4-4" />
       <path d="M4 13c-1 1-2 1-2 1s0-1 1-2" />
+    </svg>
+  );
+}
+
+/* ---------- Diagnostic modal ---------- */
+
+function DiagnosticModal(props: {
+  toolId: string | null;
+  report: DiagnosticReport | null;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const { toolId, report, loading, onClose } = props;
+  if (!toolId) return null;
+
+  const summary = report
+    ? {
+        ok: report.findings.filter((f) => f.severity === "ok").length,
+        warn: report.findings.filter((f) => f.severity === "warn").length,
+        err: report.findings.filter((f) => f.severity === "error").length,
+      }
+    : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="card-enter relative w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-[0_20px_60px_rgba(31,30,27,0.18)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[16px] font-semibold text-ink">
+              诊断报告 · {toolId}
+            </h2>
+            {summary && (
+              <p className="mt-1 text-[12px] text-ink-muted">
+                {summary.ok} 项通过 ·{" "}
+                <span className={summary.warn > 0 ? "text-warn" : ""}>
+                  {summary.warn} 警告
+                </span>{" "}
+                ·{" "}
+                <span className={summary.err > 0 ? "text-danger" : ""}>
+                  {summary.err} 错误
+                </span>
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-ink-faint transition hover:bg-surface-sunken hover:text-ink"
+            aria-label="关闭"
+          >
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 max-h-[60vh] overflow-auto">
+          {loading ? (
+            <div className="flex items-center gap-2 py-6 text-[13px] text-ink-muted">
+              <SpinnerIcon className="h-3.5 w-3.5 animate-spin" />
+              正在检查…
+            </div>
+          ) : report?.findings.length === 0 ? (
+            <p className="py-6 text-center text-[13px] text-ink-faint">
+              该工具没有可用的诊断规则。
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {report?.findings.map((f, i) => (
+                <li
+                  key={i}
+                  className={
+                    "rounded-lg border p-3 " +
+                    (f.severity === "ok"
+                      ? "border-success-soft/40 bg-success-soft/30"
+                      : f.severity === "warn"
+                        ? "border-warn/20 bg-warn/5"
+                        : "border-danger-soft bg-danger-soft/40")
+                  }
+                >
+                  <div className="flex items-start gap-2">
+                    <SeverityDot severity={f.severity} />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={
+                          "text-[13px] " +
+                          (f.severity === "ok"
+                            ? "text-ink"
+                            : f.severity === "warn"
+                              ? "text-ink"
+                              : "text-ink")
+                        }
+                      >
+                        {f.message}
+                      </p>
+                      {f.suggestion && (
+                        <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+                          💡 {f.suggestion}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SeverityDot(props: { severity: Severity }) {
+  return (
+    <span
+      className={
+        "mt-1 h-2 w-2 shrink-0 rounded-full " +
+        (props.severity === "ok"
+          ? "bg-success"
+          : props.severity === "warn"
+            ? "bg-warn"
+            : "bg-danger")
+      }
+    />
+  );
+}
+
+function CloseIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+    </svg>
+  );
+}
+
+function StethoscopeIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M3 2v5a3 3 0 0 0 6 0V2" />
+      <path d="M6 10v2a3 3 0 0 0 6 0v-1" />
+      <circle cx="12" cy="9" r="2" />
     </svg>
   );
 }

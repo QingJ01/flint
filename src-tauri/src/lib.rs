@@ -5,6 +5,7 @@ pub mod preset;
 pub mod executor;
 pub mod detector;
 pub mod wsl;
+pub mod diagnose;
 pub mod ipc;
 pub mod config;
 
@@ -23,7 +24,8 @@ pub fn run() {
             ipc::mirror_status,
             ipc::apply_npm_mirror,
             ipc::apply_pip_mirror,
-            ipc::apply_domestic_acceleration
+            ipc::apply_domestic_acceleration,
+            ipc::diagnose_tool
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
