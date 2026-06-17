@@ -1,5 +1,6 @@
 use crate::preset::{self, Preset, PresetMeta};
 use crate::recipe::ParameterOption;
+use crate::wsl::{self, WslStatus};
 use crate::{
     config,
     detector::{self, ToolCategory, ToolStatus},
@@ -54,6 +55,117 @@ pub async fn list_presets() -> Result<Vec<PresetMeta>, String> {
 #[tauri::command]
 pub async fn get_preset(id: String) -> Result<Preset, String> {
     Preset::load(&id)
+}
+
+/// Probe `wsl --status` and return a structured snapshot.
+#[tauri::command]
+pub async fn wsl_status() -> Result<WslStatus, String> {
+    wsl::detect_wsl().map_err(|e| e.to_string())
+}
+
+/// Trigger the Windows "enable WSL" flow. This is the one operation that
+/// genuinely requires admin: it spawns `wsl --install` via PowerShell's
+/// `Start-Process -Verb RunAs`, which prompts the user with a UAC dialog.
+/// Returns immediately after kicking off the elevation; the caller should
+/// poll `wsl_status` to confirm the feature is enabled.
+#[tauri::command]
+pub async fn wsl_enable(on_event: Channel<InstallEvent>) -> Result<(), String> {
+    let script = r#"Start-Process wsl -Verb RunAs -ArgumentList "--install","--no-distribution","--no-launch""#;
+    let argv = vec![
+        "powershell".to_string(),
+        "-NoProfile".to_string(),
+        "-Command".to_string(),
+        script.to_string(),
+    ];
+    let mut rx = executor::run(&argv, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut exit_code: i32 = 0;
+    while let Some(ev) = rx.recv().await {
+        match ev {
+            StreamEvent::Line(l) => {
+                let _ = on_event.send(InstallEvent::Log { line: l });
+            }
+            StreamEvent::Exit(c) => exit_code = c,
+        }
+    }
+    // Start-Process returns immediately; we don't strictly care about its
+    // exit code. Surface a hint log instead.
+    let _ = on_event.send(InstallEvent::Log {
+        line: "[info] 若弹出 UAC 对话框请点「是」；操作完成后新开 PowerShell 运行 `wsl --status` 验证。".into(),
+    });
+    let _ = on_event.send(InstallEvent::Done {
+        ok: exit_code == 0,
+        version: None,
+        error: None,
+    });
+    Ok(())
+}
+
+/// Install a baseline dev environment inside the default WSL Ubuntu
+/// distro. Runs as root to skip the first-launch user setup wizard. Streams
+/// progress via `on_event`.
+#[tauri::command]
+pub async fn wsl_install_dev_tools(on_event: Channel<InstallEvent>) -> Result<(), String> {
+    // apt update + install baseline + install fnm + Node LTS + Bun + Python
+    // + uv + Claude Code native installer.
+    let script = r#"
+set -e
+echo "[wsl] apt update..."
+sudo apt-get update -y
+echo "[wsl] install baseline..."
+sudo apt-get install -y git curl ca-certificates build-essential
+echo "[wsl] install fnm + Node LTS..."
+curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+export PATH="$HOME/.local/share/fnm:$PATH"
+eval "$(fnm env --use-on-cd --shell bash)"
+fnm install --lts
+fnm default lts-latest
+echo "[wsl] install Bun..."
+curl -fsSL https://bun.com/install | bash
+echo "[wsl] install Python + pip..."
+sudo apt-get install -y python3 python3-pip python3-venv
+echo "[wsl] install uv..."
+curl -LsSf https://astral.sh/uv/install.sh | sh
+echo "[wsl] install Claude Code..."
+curl -fsSL https://claude.ai/install.sh | sh
+echo "[wsl] done"
+"#;
+    let argv = vec![
+        "wsl".to_string(),
+        "-u".to_string(),
+        "root".to_string(),
+        "-d".to_string(),
+        "Ubuntu".to_string(),
+        "--".to_string(),
+        "bash".to_string(),
+        "-c".to_string(),
+        script.to_string(),
+    ];
+    let total = 1;
+    let mut rx = executor::run(&argv, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut exit_code: i32 = 0;
+    while let Some(ev) = rx.recv().await {
+        match ev {
+            StreamEvent::Line(l) => {
+                let _ = on_event.send(InstallEvent::Log { line: l });
+            }
+            StreamEvent::Exit(c) => exit_code = c,
+        }
+    }
+    let _ = on_event.send(InstallEvent::Progress { pct: 100 });
+    let _ = on_event.send(InstallEvent::Done {
+        ok: exit_code == 0,
+        version: None,
+        error: if exit_code != 0 {
+            Some(format!("wsl bash exited with {exit_code}"))
+        } else {
+            None
+        },
+    });
+    Ok(())
 }
 
 /// Enumerate every recipe on disk as a `ToolMeta` for the frontend.

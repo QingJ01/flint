@@ -4,6 +4,7 @@ pub mod recipe;
 pub mod preset;
 pub mod executor;
 pub mod detector;
+pub mod wsl;
 pub mod ipc;
 pub mod config;
 
@@ -15,7 +16,10 @@ pub fn run() {
             ipc::list_installable_tools,
             ipc::install_tool,
             ipc::list_presets,
-            ipc::get_preset
+            ipc::get_preset,
+            ipc::wsl_status,
+            ipc::wsl_enable,
+            ipc::wsl_install_dev_tools
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
