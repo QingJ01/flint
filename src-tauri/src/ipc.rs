@@ -1,6 +1,6 @@
 use serde::Serialize;
 use tauri::ipc::Channel;
-use crate::{config, detector, executor::{self, StreamEvent}, recipe::Recipe};
+use crate::{config, detector::{self, ToolStatus}, executor::{self, StreamEvent}, recipe::Recipe};
 
 /// 流式推送给前端的事件。`#[serde(tag = "type")]` 让前端可以按 `event.type` 分支。
 #[derive(Serialize, Clone)]
@@ -14,6 +14,11 @@ pub enum InstallEvent {
 #[tauri::command]
 pub async fn detect_node() -> Result<Option<String>, String> {
     detector::detect_node().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn detect_environment() -> Result<Vec<ToolStatus>, String> {
+    detector::detect_environment().map_err(|e| e.to_string())
 }
 
 /// 执行 node 安装配方，按行把 stdout/stderr 推给前端，并在每一步推进进度。
