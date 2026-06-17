@@ -494,4 +494,32 @@ steps = [
         assert_eq!(win.add_to_user_path.len(), 1);
         assert_eq!(win.add_to_user_path[0], "%LOCALAPPDATA%\\Programs\\Python\\python-3.12.7");
     }
+
+    /// Regression: every shipped recipe in `resources/recipes/` must parse
+    /// and have a windows install block. If you add a new tool, this catches
+    /// a missing `[install.windows]` before it bites in production.
+    #[test]
+    fn shipped_recipes_parse_and_have_windows_install() {
+        // The crate's CWD during `cargo test` is the crate dir, so
+        // `resources/recipes` is the right relative path.
+        let dir = std::path::Path::new("resources/recipes");
+        if !dir.exists() {
+            // Skip if running from a different CWD (e.g. some CI configs).
+            return;
+        }
+        let metas = Recipe::list_available_from(dir);
+        assert!(metas.len() >= 8, "expected 8 shipped recipes, found {}", metas.len());
+        for m in &metas {
+            let r = Recipe::load_from(dir, &m.id).unwrap_or_else(|e| {
+                panic!("recipe {} failed to load: {e}", m.id);
+            });
+            assert!(
+                r.install.contains_key("windows"),
+                "recipe {} has no [install.windows] section",
+                m.id
+            );
+            let win = &r.install["windows"];
+            assert!(!win.steps.is_empty(), "recipe {} has no windows install steps", m.id);
+        }
+    }
 }

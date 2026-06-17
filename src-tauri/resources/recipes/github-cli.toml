@@ -1,0 +1,32 @@
+[meta]
+id = "github-cli"
+display_name = "GitHub CLI"
+category = "runtime"
+
+# 官方 windows_amd64 zip → 解压到 %LOCALAPPDATA%\Programs\gh → 加 bin 到 PATH
+[install.windows]
+requires_elevation = false
+add_to_user_path = [
+  "%LOCALAPPDATA%\\Programs\\gh\\bin",
+]
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "New-Item -ItemType Directory -Force -Path \"$env:LOCALAPPDATA\\Programs\\gh\" | Out-Null"] },
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "Invoke-WebRequest -Uri \"https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_windows_amd64.zip\" -OutFile \"$env:TEMP\\gh.zip\""] },
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "Expand-Archive -Path \"$env:TEMP\\gh.zip\" -DestinationPath \"$env:LOCALAPPDATA\\Programs\\gh\" -Force"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "brew install gh"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "(type -p wget >/dev/null || (sudo apt-get update && sudo apt-get install -y wget)) && sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt-get update && sudo apt-get install -y gh"] },
+]
+
+[detect.windows]
+cmd = "gh"
+args = ["--version"]

@@ -1,0 +1,28 @@
+[meta]
+id = "bun"
+display_name = "Bun"
+category = "runtime"
+
+# bun 的官方安装器（PowerShell）会自动把 ~/.bun/bin 加到用户 PATH，
+# 并把 `bun` 命令注册到当前 shell。无需手动 PATH 配置。
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm bun.sh/install.ps1 | iex"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://bun.com/install | bash"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://bun.com/install | bash"] },
+]
+
+[detect.windows]
+cmd = "bun"
+args = ["--version"]

@@ -1,0 +1,28 @@
+[meta]
+id = "opencode"
+display_name = "OpenCode"
+category = "ai-tool"
+
+# 官方原生安装器（零依赖、零提权、自动更新）。
+# 安装到 %USERPROFILE%\.opencode\bin 并自动接入 PATH。
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://opencode.ai/install.ps1 | iex"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://opencode.ai/install | bash"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://opencode.ai/install | bash"] },
+]
+
+[detect.windows]
+cmd = "opencode"
+args = ["--version"]

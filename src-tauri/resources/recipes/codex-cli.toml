@@ -1,0 +1,28 @@
+[meta]
+id = "codex-cli"
+display_name = "Codex CLI"
+category = "ai-tool"
+
+# 通过 npm 全局安装。**依赖 Node.js** —— 如果 Node 没装，
+# 这条命令会失败，前端会看到 npm 错误。Codex 走 npm 是产品文档 §2.1.3 明确写的。
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "npm", args = ["install", "-g", "@openai/codex"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "npm", args = ["install", "-g", "@openai/codex"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "npm", args = ["install", "-g", "@openai/codex"] },
+]
+
+[detect.windows]
+cmd = "codex"
+args = ["--version"]

@@ -1,0 +1,36 @@
+[meta]
+id = "git"
+display_name = "Git"
+category = "runtime"
+
+# MinGit 是 git-for-windows 提供的极简包（~50MB），
+# 解压即用，免安装、零提权。砍掉了 Bash/GUI/Perl，对 vibecoder 够用。
+# 版本钉在当前最新稳定版，未来切到参数化下拉仅需加 [parameters.git_version]
+[install.windows]
+requires_elevation = false
+add_to_user_path = [
+  "%LOCALAPPDATA%\\Programs\\Git\\cmd",
+  "%LOCALAPPDATA%\\Programs\\Git\\mingw64\\bin",
+  "%LOCALAPPDATA%\\Programs\\Git\\usr\\bin",
+]
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "New-Item -ItemType Directory -Force -Path \"$env:LOCALAPPDATA\\Programs\\Git\" | Out-Null"] },
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "Invoke-WebRequest -Uri \"https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/MinGit-2.47.1-64-bit.zip\" -OutFile \"$env:TEMP\\mingit.zip\""] },
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "Expand-Archive -Path \"$env:TEMP\\mingit.zip\" -DestinationPath \"$env:LOCALAPPDATA\\Programs\\Git\" -Force"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "xcode-select --install 2>/dev/null || brew install git"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "sudo apt-get install -y git"] },
+]
+
+[detect.windows]
+cmd = "git"
+args = ["--version"]

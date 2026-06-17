@@ -1,0 +1,28 @@
+[meta]
+id = "claude-code"
+display_name = "Claude Code"
+category = "ai-tool"
+
+# 官方原生安装器（零依赖、零提权、自动更新）。
+# 安装到 %USERPROFILE%\.claude\bin 并自动接入 PATH。
+[install.windows]
+requires_elevation = false
+steps = [
+  { cmd = "powershell", args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"] },
+]
+
+[install.macos]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://claude.ai/install.sh | sh"] },
+]
+
+[install.linux]
+requires_elevation = false
+steps = [
+  { cmd = "bash", args = ["-c", "curl -fsSL https://claude.ai/install.sh | sh"] },
+]
+
+[detect.windows]
+cmd = "claude"
+args = ["--version"]
