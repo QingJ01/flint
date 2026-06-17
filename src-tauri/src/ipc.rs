@@ -97,9 +97,9 @@ pub async fn install_tool(
     let recipe = Recipe::load_optional(&id)
         .ok_or_else(|| format!("unknown tool id: '{id}' (no recipe at resources/recipes/{id}.toml)"))?;
     let platform = current_platform();
-    let platform_install = recipe.install.get(platform).ok_or_else(|| {
-        format!("recipe '{id}' has no install steps for platform '{platform}'")
-    })?;
+    if !recipe.install.contains_key(platform) {
+        return Err(format!("recipe '{id}' has no install steps for platform '{platform}'"));
+    }
 
     let substituted = recipe.substitute(&params).map_err(|e| e.to_string())?;
     let substituted_install = substituted
