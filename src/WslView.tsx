@@ -51,6 +51,11 @@ export function WslView(props: Props) {
                 已装发行版：{status.distros.join(", ")}
               </p>
             )}
+            {status?.kernel_version && (
+              <p className="mt-1 font-mono text-[11.5px] text-ink-faint">
+                {status.kernel_version}
+              </p>
+            )}
             {status?.state === "unknown" && status.raw && (
               <p className="mt-1 font-mono text-[11px] text-warn">
                 {status.raw}
