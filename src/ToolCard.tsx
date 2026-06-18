@@ -108,46 +108,50 @@ export function ToolCard(props: Props) {
         </div>
       )}
 
-      {/* Primary action: install (when missing) or switch version (when
-          installed). Both go through install_tool — fnm/python reinstall
-          overwrites, so "switch" == reinstall at the chosen version. */}
-      <button
-        type="button"
-        onClick={() => onInstall(meta.id)}
-        disabled={busy}
-        className={
-          "mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition " +
-          (isThisBusy
-            ? "bg-accent text-white shadow-[0_1px_2px_rgba(204,120,92,0.4)]"
-            : isOtherBusy
-              ? "bg-ink/30 text-white/70 cursor-not-allowed"
-              : installed
-                ? "border border-line bg-surface text-ink hover:border-line-strong hover:bg-cream-deep"
-                : "bg-ink text-white hover:bg-ink/90 active:bg-ink/95 shadow-[0_1px_2px_rgba(31,30,27,0.18)]")
-        }
-      >
-        {isThisBusy ? (
-          <>
-            <SpinnerIcon className="h-3 w-3 animate-spin" />
-            {installed ? "切换中…" : "安装中…"}
-          </>
-        ) : installed ? (
-          hasVersions ? "切换版本" : "重新安装"
-        ) : (
-          "安装"
-        )}
-      </button>
-
-      {installed && (
+      {/* Actions. When missing: a single full-width install button. When
+          installed: switch-version + diagnose side by side. Both primary
+          paths go through install_tool — fnm/python reinstall overwrites, so
+          "switch" == reinstall at the chosen version. */}
+      <div className="mt-auto flex gap-2">
         <button
           type="button"
-          onClick={() => onDiagnose(meta.id)}
-          className="inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[11.5px] font-medium text-ink-muted transition hover:border-line-strong hover:text-ink"
+          onClick={() => onInstall(meta.id)}
+          disabled={busy}
+          className={
+            "inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition " +
+            (isThisBusy
+              ? "bg-accent text-white shadow-[0_1px_2px_rgba(204,120,92,0.4)]"
+              : isOtherBusy
+                ? "bg-ink/30 text-white/70 cursor-not-allowed"
+                : installed
+                  ? "border border-line bg-surface text-ink hover:border-line-strong hover:bg-cream-deep"
+                  : "bg-ink text-white hover:bg-ink/90 active:bg-ink/95 shadow-[0_1px_2px_rgba(31,30,27,0.18)]")
+          }
         >
-          <StethoscopeIcon className="h-3 w-3" />
-          诊断
+          {isThisBusy ? (
+            <>
+              <SpinnerIcon className="h-3 w-3 animate-spin" />
+              {installed ? "切换中…" : "安装中…"}
+            </>
+          ) : installed ? (
+            hasVersions ? "切换版本" : "重新安装"
+          ) : (
+            "安装"
+          )}
         </button>
-      )}
+
+        {installed && (
+          <button
+            type="button"
+            onClick={() => onDiagnose(meta.id)}
+            disabled={busy}
+            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium text-ink-muted transition hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <StethoscopeIcon className="h-3.5 w-3.5" />
+            诊断
+          </button>
+        )}
+      </div>
     </article>
   );
 }

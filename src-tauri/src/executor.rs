@@ -39,7 +39,20 @@ pub async fn run(argv: &[String], _on_cancel: Option<()>) -> Result<mpsc::Receiv
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
 
-    let mut child = cmd.spawn()?;
+    // Turn the raw OS "program not found" into something actionable. This
+    // fires when a recipe step invokes a tool that isn't on PATH — e.g.
+    // switching Node versions calls `fnm`, but fnm isn't installed yet.
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            FlintError::Other(format!(
+                "找不到命令 `{}`：它可能还没安装或不在 PATH。\
+                 （切换 Node 版本需要先用 Flint 装一次 Node 以引入 fnm）",
+                argv[0]
+            ))
+        } else {
+            FlintError::Io(e)
+        }
+    })?;
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
 

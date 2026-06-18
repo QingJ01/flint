@@ -59,31 +59,41 @@ pub fn parse_fnm_list_remote(stdout: &str, cap: usize) -> Vec<ParameterOption> {
 struct PythonEolEntry {
     cycle: String,
     latest: String,
-    #[serde(default)]
-    eol: serde_json::Value, // can be a date string or `false`
 }
 
 /// Parse the endoflife.date `python.json` body into version options.
-/// Each entry's `latest` is a full patch version (e.g. "3.13.14"), which is
-/// exactly the form the Python embeddable-zip URL needs. EOL'd lines get a
-/// marker so users avoid them.
+/// Each entry's `latest` is a full patch version (e.g. "3.13.14") — exactly
+/// the form the Python embeddable-zip URL needs.
+///
+/// endoflife returns every release line back to Python 1.x. The Windows
+/// embeddable zip only exists for 3.x, so we keep only `3.y` lines (dropping
+/// 2.x/1.x that would just 404 the download), and sort newest cycle first so
+/// 3.14 / 3.13 lead the dropdown.
 pub fn parse_python_eol(json: &str) -> Vec<ParameterOption> {
     let entries: Vec<PythonEolEntry> = match serde_json::from_str(json) {
         Ok(e) => e,
         Err(_) => return Vec::new(),
     };
-    entries
+    let mut lines: Vec<(u32, String)> = entries
         .into_iter()
         .filter(|e| !e.latest.is_empty())
-        .map(|e| {
-            // `eol` is a date string when reached, `false` (bool) otherwise.
-            let past_eol = e.eol.as_str().is_some();
-            let label = if past_eol {
-                format!("{} (已停止维护)", e.latest)
-            } else {
-                format!("{} ({})", e.latest, e.cycle)
-            };
-            ParameterOption { value: e.latest, label }
+        .filter_map(|e| {
+            // cycle is "3.13"; keep major==3, parse minor for sorting.
+            let mut parts = e.cycle.split('.');
+            let major = parts.next()?;
+            let minor: u32 = parts.next()?.parse().ok()?;
+            if major != "3" {
+                return None;
+            }
+            Some((minor, e.latest))
+        })
+        .collect();
+    lines.sort_by(|a, b| b.0.cmp(&a.0)); // newest minor first
+    lines
+        .into_iter()
+        .map(|(_minor, latest)| ParameterOption {
+            value: latest.clone(),
+            label: latest,
         })
         .collect()
 }
@@ -177,25 +187,39 @@ v23.0.0
     }
 
     const PYTHON_EOL_SAMPLE: &str = r#"[
+        {"cycle":"3.9","latest":"3.9.20","eol":"2025-10-31"},
         {"cycle":"3.14","latest":"3.14.6","eol":false},
         {"cycle":"3.13","latest":"3.13.14","eol":false},
-        {"cycle":"3.9","latest":"3.9.20","eol":"2025-10-31"}
+        {"cycle":"2.7","latest":"2.7.18","eol":"2020-01-01"},
+        {"cycle":"1.6","latest":"1.6.1","eol":true}
     ]"#;
 
     #[test]
-    fn parse_python_eol_maps_latest_patch() {
+    fn parse_python_eol_maps_latest_patch_newest_first() {
         let opts = parse_python_eol(PYTHON_EOL_SAMPLE);
+        // 3.14 → 3.13 → 3.9 (sorted by minor desc), 2.x/1.x dropped.
         assert_eq!(opts.len(), 3);
         assert_eq!(opts[0].value, "3.14.6");
         assert_eq!(opts[1].value, "3.13.14");
-        assert!(opts[1].label.contains("3.13"));
+        assert_eq!(opts[2].value, "3.9.20");
     }
 
     #[test]
-    fn parse_python_eol_marks_dead_versions() {
+    fn parse_python_eol_drops_pre_3x_versions() {
         let opts = parse_python_eol(PYTHON_EOL_SAMPLE);
-        // 3.9 has a date eol → flagged.
-        assert!(opts[2].label.contains("已停止维护"), "got: {}", opts[2].label);
+        assert!(
+            !opts.iter().any(|o| o.value.starts_with("2.") || o.value.starts_with("1.")),
+            "must drop Python 2.x / 1.x (no embeddable zip): {opts:?}"
+        );
+    }
+
+    #[test]
+    fn parse_python_eol_label_has_no_eol_marker() {
+        let opts = parse_python_eol(PYTHON_EOL_SAMPLE);
+        assert!(
+            opts.iter().all(|o| !o.label.contains("停止维护")),
+            "labels must not carry EOL markers: {opts:?}"
+        );
     }
 
     #[test]
