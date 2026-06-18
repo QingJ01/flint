@@ -13,10 +13,12 @@ type Props = {
   onApply: (id: string) => void;
   busy: boolean;
   presetProgress: PresetProgress;
+  /** Show the first-run intro banner (set for brand-new / empty environments). */
+  showOnboarding?: boolean;
 };
 
 export function PresetsView(props: Props) {
-  const { presets, onApply, busy, presetProgress } = props;
+  const { presets, onApply, busy, presetProgress, showOnboarding } = props;
 
   if (presets.length === 0) {
     return (
@@ -27,7 +29,21 @@ export function PresetsView(props: Props) {
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="flex flex-col gap-4">
+      {showOnboarding && (
+        <div className="rounded-xl border border-accent-soft/50 bg-accent-soft/15 p-4">
+          <h2 className="text-[15px] font-semibold text-ink">
+            👋 欢迎！从零到能用 AI 写代码，选一个组合就够了
+          </h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">
+            不确定装什么？点下面任意一个「<span className="font-medium text-ink">应用预设</span>」，
+            Flint 会自动把整套工具一次装好——无需逐个挑选。
+            拿不准就选 <span className="font-medium text-ink">Vibecoder 全家桶</span>。
+            想自己挑？切到上方「仪表盘」逐个安装。
+          </p>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
       {presets.map((p) => {
         const isThis = presetProgress?.presetName === p.display_name;
         return (
@@ -78,6 +94,7 @@ export function PresetsView(props: Props) {
           </article>
         );
       })}
+      </div>
     </div>
   );
 }

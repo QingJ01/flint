@@ -54,8 +54,14 @@ export default function App() {
     Record<string, ParameterOption[]>
   >({});
   const [versionsLoading, setVersionsLoading] = useState<string | null>(null);
+  // Whether to show the first-run intro banner on the 预设 tab.
+  const [isNewUser, setIsNewUser] = useState(false);
   const settled = useRef(false);
   const logEndRef = useRef<HTMLDivElement | null>(null);
+  // True once the user has manually switched tabs (or we've already done the
+  // first-run redirect). Guards the "land new users on 预设" auto-jump so it
+  // never steals a tab the user picked themselves, and only ever fires once.
+  const tabDecided = useRef(false);
 
   const installedCount = tools.filter((t) => t.installed).length;
   const totalCount = tools.length;
@@ -88,6 +94,22 @@ export default function App() {
     setPresets(p);
     setWsl(ws);
     setMirror(mi);
+
+    // First-run onboarding: land brand-new / near-empty environments on the
+    // 预设 (presets) tab so a beginner sees the one-click bundles instead of
+    // an 11-card grid they must decide their way through. Only fires once,
+    // never overrides a tab the user already picked, and leaves returning
+    // users on 仪表盘. A user with >1 tool installed is treated as "set up".
+    if (!tabDecided.current) {
+      tabDecided.current = true;
+      const firstRun = !localStorage.getItem("flint.visited");
+      const nearEmpty = status.filter((t) => t.installed).length <= 1;
+      if (firstRun || nearEmpty) {
+        setView("presets");
+        setIsNewUser(true);
+      }
+      localStorage.setItem("flint.visited", "1");
+    }
     setParams((cur) => {
       const next: ParamMap = { ...cur };
       for (const tool of m) {
@@ -454,7 +476,16 @@ export default function App() {
           </div>
         </header>
 
-        <TabBar view={view} onChange={setView} presetCount={presets.length} />
+        <TabBar
+          view={view}
+          onChange={(v) => {
+            // A manual tab choice locks out the first-run auto-jump, even if
+            // it races ahead of the initial detect_environment.
+            tabDecided.current = true;
+            setView(v);
+          }}
+          presetCount={presets.length}
+        />
 
         <div
           aria-hidden
@@ -490,6 +521,7 @@ export default function App() {
                 onApply={(id) => void applyPreset(id)}
                 busy={busy}
                 presetProgress={presetProgress}
+                showOnboarding={isNewUser}
               />
             )}
             {view === "wsl" && (
