@@ -9,6 +9,7 @@ import { MirrorsView } from "./MirrorsView";
 import { SnapshotView } from "./SnapshotView";
 import { DiagnosticModal } from "./DiagnosticModal";
 import { RefreshIcon } from "./icons";
+import { useI18n, type Locale } from "./i18n";
 import { logClass } from "./format";
 import type {
   DiagnosticReport,
@@ -32,6 +33,7 @@ type PresetProgress = {
 } | null;
 
 export default function App() {
+  const { t, locale, setLocale } = useI18n();
   const [view, setView] = useState<View>("dashboard");
   const [tools, setTools] = useState<ToolStatus[]>([]);
   const [meta, setMeta] = useState<ToolMeta[]>([]);
@@ -454,7 +456,7 @@ export default function App() {
               Flint<span className="text-accent">.</span>
             </h1>
             <p className="mt-2 text-[13px] text-ink-muted">
-              一击点燃你的开发环境
+              {t("app.tagline")}
             </p>
           </div>
           <div className="flex items-center gap-5">
@@ -462,8 +464,9 @@ export default function App() {
               <span className="font-medium text-success">{installedCount}</span>
               <span className="mx-1.5 text-ink-faint">/</span>
               <span className="font-medium text-ink">{totalCount}</span>
-              <span className="ml-1.5 text-ink-faint">已就绪</span>
+              <span className="ml-1.5 text-ink-faint">{t("app.ready")}</span>
             </div>
+            <LangToggle locale={locale} setLocale={setLocale} t={t} />
             <button
               type="button"
               onClick={() => void refresh()}
@@ -471,7 +474,7 @@ export default function App() {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3.5 text-[13px] font-medium text-ink shadow-[0_1px_0_rgba(0,0,0,0.02)] transition hover:border-line-strong hover:bg-cream-deep disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshIcon className="h-3.5 w-3.5" />
-              {refreshing ? "检测中" : "重新检测"}
+              {refreshing ? t("app.refreshing") : t("app.refresh")}
             </button>
           </div>
         </header>
@@ -600,5 +603,33 @@ export default function App() {
         onClose={closeDiagnostic}
       />
     </main>
+  );
+}
+
+/** Compact zh / EN segmented toggle for the header. */
+function LangToggle(props: {
+  locale: Locale;
+  setLocale: (l: Locale) => void;
+  t: (key: "lang.zh" | "lang.en") => string;
+}) {
+  const { locale, setLocale, t } = props;
+  return (
+    <div className="inline-flex overflow-hidden rounded-lg border border-line text-[12px]">
+      {(["zh", "en"] as const).map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => setLocale(l)}
+          className={
+            "px-2.5 py-1 font-medium transition " +
+            (locale === l
+              ? "bg-ink text-white"
+              : "bg-surface text-ink-muted hover:bg-cream-deep")
+          }
+        >
+          {t(l === "zh" ? "lang.zh" : "lang.en")}
+        </button>
+      ))}
+    </div>
   );
 }

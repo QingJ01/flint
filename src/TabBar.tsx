@@ -1,4 +1,6 @@
 import type { View } from "./types";
+import { useT } from "./i18n";
+import type { MessageKey } from "./i18n/zh";
 
 type Props = {
   view: View;
@@ -6,25 +8,26 @@ type Props = {
   presetCount: number;
 };
 
-const tabs: { id: View; label: string }[] = [
-  { id: "dashboard", label: "仪表盘" },
-  { id: "presets", label: "预设" },
-  { id: "wsl", label: "WSL" },
-  { id: "mirrors", label: "镜像" },
-  { id: "snapshot", label: "快照" },
+const tabs: { id: View; labelKey: MessageKey }[] = [
+  { id: "dashboard", labelKey: "tab.dashboard" },
+  { id: "presets", labelKey: "tab.presets" },
+  { id: "wsl", labelKey: "tab.wsl" },
+  { id: "mirrors", labelKey: "tab.mirrors" },
+  { id: "snapshot", labelKey: "tab.snapshot" },
 ];
 
 export function TabBar(props: Props) {
   const { view, onChange, presetCount } = props;
+  const t = useT();
   return (
     <nav className="mb-5 flex items-center gap-1 border-b border-line">
-      {tabs.map((t) => (
+      {tabs.map((tab) => (
         <TabButton
-          key={t.id}
-          active={view === t.id}
-          onClick={() => onChange(t.id)}
-          label={t.label}
-          badge={t.id === "presets" ? presetCount : undefined}
+          key={tab.id}
+          active={view === tab.id}
+          onClick={() => onChange(tab.id)}
+          label={t(tab.labelKey)}
+          badge={tab.id === "presets" ? presetCount : undefined}
         />
       ))}
     </nav>
