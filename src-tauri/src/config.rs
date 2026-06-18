@@ -74,8 +74,14 @@ pub fn add_to_user_path(dir: &Path) -> Result<bool> {
 /// Well-known registry URLs. `Custom` lets the user paste their own.
 pub const NPM_REGISTRIES: &[(&str, &str)] = &[
     ("https://registry.npmjs.org/", "官方源 (npmjs.org)"),
-    ("https://registry.npmmirror.com/", "淘宝镜像 (npmmirror.com)"),
-    ("https://mirrors.huaweicloud.com/repository/npm/", "华为云镜像"),
+    (
+        "https://registry.npmmirror.com/",
+        "淘宝镜像 (npmmirror.com)",
+    ),
+    (
+        "https://mirrors.huaweicloud.com/repository/npm/",
+        "华为云镜像",
+    ),
     ("https://mirrors.cloud.tencent.com/npm/", "腾讯云镜像"),
 ];
 
@@ -83,8 +89,14 @@ pub const PIP_REGISTRIES: &[(&str, &str)] = &[
     ("https://pypi.org/simple", "官方源 (PyPI)"),
     ("https://pypi.tuna.tsinghua.edu.cn/simple", "清华源"),
     ("https://mirrors.aliyun.com/pypi/simple", "阿里源"),
-    ("https://mirrors.huaweicloud.com/repository/pypi/simple", "华为云镜像"),
-    ("https://mirrors.cloud.tencent.com/pypi/simple", "腾讯云镜像"),
+    (
+        "https://mirrors.huaweicloud.com/repository/pypi/simple",
+        "华为云镜像",
+    ),
+    (
+        "https://mirrors.cloud.tencent.com/pypi/simple",
+        "腾讯云镜像",
+    ),
 ];
 
 pub const GITHUB_MIRRORS: &[(&str, &str)] = &[
@@ -104,8 +116,7 @@ pub fn user_home() -> Result<std::path::PathBuf> {
     }
     #[cfg(not(windows))]
     {
-        let h = std::env::var("HOME")
-            .map_err(|e| FlintError::Other(format!("HOME: {e}")))?;
+        let h = std::env::var("HOME").map_err(|e| FlintError::Other(format!("HOME: {e}")))?;
         Ok(std::path::PathBuf::from(h))
     }
 }
@@ -197,9 +208,11 @@ pub fn apply_pip_registry(index_url: &str) -> Result<bool> {
 
 #[cfg(windows)]
 fn pip_config_path() -> Result<std::path::PathBuf> {
-    let appdata = std::env::var("APPDATA")
-        .map_err(|e| FlintError::Other(format!("APPDATA: {e}")))?;
-    Ok(std::path::PathBuf::from(appdata).join("pip").join("pip.ini"))
+    let appdata =
+        std::env::var("APPDATA").map_err(|e| FlintError::Other(format!("APPDATA: {e}")))?;
+    Ok(std::path::PathBuf::from(appdata)
+        .join("pip")
+        .join("pip.ini"))
 }
 
 #[cfg(not(windows))]
@@ -307,13 +320,19 @@ mod mirror_tests {
             .lines()
             .filter(|l| l.trim_start().starts_with("index-url"))
             .count();
-        assert_eq!(global_count, 2, "should keep [install] index-url + add [global] one");
+        assert_eq!(
+            global_count, 2,
+            "should keep [install] index-url + add [global] one"
+        );
     }
 
     #[test]
     fn extract_equals_value_finds_key() {
         let text = "foo=bar\nregistry=https://x.example/\n";
-        assert_eq!(extract_equals_value(text, "registry").as_deref(), Some("https://x.example/"));
+        assert_eq!(
+            extract_equals_value(text, "registry").as_deref(),
+            Some("https://x.example/")
+        );
     }
 }
 
@@ -403,7 +422,10 @@ mod tests {
     #[test]
     fn append_path_dir_adds_when_absent() {
         let result = append_path_dir("C:\\Windows;C:\\Program Files", "C:\\Python313");
-        assert_eq!(result.as_deref(), Some("C:\\Windows;C:\\Program Files;C:\\Python313"));
+        assert_eq!(
+            result.as_deref(),
+            Some("C:\\Windows;C:\\Program Files;C:\\Python313")
+        );
     }
 
     #[test]

@@ -1,18 +1,22 @@
-use tokio::io::{AsyncRead, AsyncBufReadExt, BufReader};
+use crate::error::{FlintError, Result};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
-use crate::error::{FlintError, Result};
 
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
-    Line(String),          // stdout 或 stderr 的一行
-    Exit(i32),             // 退出码
+    Line(String), // stdout 或 stderr 的一行
+    Exit(i32),    // 退出码
 }
 
 async fn pump<R: AsyncRead + Unpin>(stream: R, tx: mpsc::Sender<StreamEvent>, tag: &'static str) {
     let mut lines = BufReader::new(stream).lines();
     while let Ok(Some(line)) = lines.next_line().await {
-        if tx.send(StreamEvent::Line(format!("[{tag}] {line}"))).await.is_err() {
+        if tx
+            .send(StreamEvent::Line(format!("[{tag}] {line}")))
+            .await
+            .is_err()
+        {
             return; // receiver dropped — stop pumping
         }
     }
@@ -32,8 +36,8 @@ pub async fn run(argv: &[String], _on_cancel: Option<()>) -> Result<mpsc::Receiv
     let mut cmd = Command::new(program);
     cmd.args(&args);
     cmd.stdout(std::process::Stdio::piped())
-       .stderr(std::process::Stdio::piped())
-       .kill_on_drop(true);
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
 
     let mut child = cmd.spawn()?;
     let stdout = child.stdout.take().expect("piped stdout");
@@ -59,10 +63,21 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn streams_echo_output() {
-        let mut rx = run(&["cmd".to_string(), "/C".to_string(), "echo hello".to_string()], None).await.unwrap();
+        let mut rx = run(
+            &[
+                "cmd".to_string(),
+                "/C".to_string(),
+                "echo hello".to_string(),
+            ],
+            None,
+        )
+        .await
+        .unwrap();
         let mut got = String::new();
         while let Some(ev) = rx.recv().await {
-            if let StreamEvent::Line(l) = ev { got.push_str(&l); }
+            if let StreamEvent::Line(l) = ev {
+                got.push_str(&l);
+            }
         }
         assert!(got.contains("hello"));
     }
@@ -71,14 +86,29 @@ mod tests {
     async fn captures_both_stdout_and_stderr() {
         // 同一条命令同时写 stdout 和 stderr；修复前 select! 会截断较慢的流。
         let mut rx = run(
-            &["cmd".to_string(), "/C".to_string(), "echo out & echo err 1>&2".to_string()],
+            &[
+                "cmd".to_string(),
+                "/C".to_string(),
+                "echo out & echo err 1>&2".to_string(),
+            ],
             None,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let mut got = String::new();
         while let Some(ev) = rx.recv().await {
-            if let StreamEvent::Line(l) = ev { got.push_str(&l); got.push('\n'); }
+            if let StreamEvent::Line(l) = ev {
+                got.push_str(&l);
+                got.push('\n');
+            }
         }
-        assert!(got.contains("[out] out"), "missing stdout line. got:\n{got}");
-        assert!(got.contains("[err] err"), "missing stderr line (truncated?). got:\n{got}");
+        assert!(
+            got.contains("[out] out"),
+            "missing stdout line. got:\n{got}"
+        );
+        assert!(
+            got.contains("[err] err"),
+            "missing stderr line (truncated?). got:\n{got}"
+        );
     }
 }

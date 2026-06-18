@@ -40,8 +40,8 @@ impl Preset {
 
     pub fn load_from(dir: &Path, id: &str) -> Result<Self, String> {
         let path = dir.join(format!("{id}.toml"));
-        let text = std::fs::read_to_string(&path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         toml::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
     }
 
@@ -111,7 +111,12 @@ node = { node_version = "lts-latest" }
         assert_eq!(p.tools.ids.len(), 8);
         assert!(p.tools.ids.contains(&"claude-code".into()));
         assert_eq!(
-            p.tools.params.get("node").unwrap().get("node_version").unwrap(),
+            p.tools
+                .params
+                .get("node")
+                .unwrap()
+                .get("node_version")
+                .unwrap(),
             "lts-latest"
         );
     }
@@ -167,10 +172,18 @@ ids = ["node"]
             return;
         }
         let metas = Preset::list_available_from(dir);
-        assert!(metas.len() >= 5, "expected 5 shipped presets, found {}", metas.len());
+        assert!(
+            metas.len() >= 5,
+            "expected 5 shipped presets, found {}",
+            metas.len()
+        );
         for m in &metas {
             let p = Preset::load_from(dir, &m.id).unwrap();
-            assert!(!p.tools.ids.is_empty(), "preset {} has empty tools.ids", m.id);
+            assert!(
+                !p.tools.ids.is_empty(),
+                "preset {} has empty tools.ids",
+                m.id
+            );
         }
     }
 }

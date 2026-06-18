@@ -30,7 +30,10 @@ impl From<&FlintError> for ErrorPayload {
             FlintError::Parse(_) => "parse",
             FlintError::Other(_) => "other",
         };
-        ErrorPayload { kind, message: e.to_string() }
+        ErrorPayload {
+            kind,
+            message: e.to_string(),
+        }
     }
 }
 

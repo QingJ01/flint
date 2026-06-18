@@ -4,7 +4,9 @@ use std::cmp::Ordering;
 pub struct Version(pub u32, pub u32, pub u32);
 
 impl Version {
-    pub fn major(&self) -> u32 { self.0 }
+    pub fn major(&self) -> u32 {
+        self.0
+    }
 }
 
 impl std::fmt::Display for Version {
@@ -15,12 +17,17 @@ impl std::fmt::Display for Version {
 
 impl Ord for Version {
     fn cmp(&self, o: &Self) -> Ordering {
-        self.0.cmp(&o.0)
+        self.0
+            .cmp(&o.0)
             .then(self.1.cmp(&o.1))
             .then(self.2.cmp(&o.2))
     }
 }
-impl PartialOrd for Version { fn partial_cmp(&self, o: &Self) -> Option<Ordering> { Some(self.cmp(o)) } }
+impl PartialOrd for Version {
+    fn partial_cmp(&self, o: &Self) -> Option<Ordering> {
+        Some(self.cmp(o))
+    }
+}
 
 /// 从 `node -v` / `v20.11.0` 这类输出解析版本。
 pub fn parse_version(s: &str) -> Result<Version, String> {

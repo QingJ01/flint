@@ -171,7 +171,9 @@ fn check_anthropic_api_key() -> Finding {
         None => Finding {
             severity: Severity::Warn,
             message: "未检测到 ANTHROPIC_API_KEY / CLAUDE_API_KEY".into(),
-            suggestion: Some("claude 首次运行会引导你登录；或在 shell 里 export ANTHROPIC_API_KEY=...".into()),
+            suggestion: Some(
+                "claude 首次运行会引导你登录；或在 shell 里 export ANTHROPIC_API_KEY=...".into(),
+            ),
         },
     }
 }
@@ -198,7 +200,12 @@ async fn check_opencode_doctor() -> Finding {
     run_doctor("opencode", "opencode --version", &[], 5).await
 }
 
-async fn run_doctor(_id: &str, label: &str, env_extra: &[(&str, &str)], timeout_sec: u64) -> Finding {
+async fn run_doctor(
+    _id: &str,
+    label: &str,
+    env_extra: &[(&str, &str)],
+    timeout_sec: u64,
+) -> Finding {
     // Splitting on whitespace is naive but good enough for the common cases.
     let argv: Vec<String> = label.split_whitespace().map(String::from).collect();
     if argv.is_empty() {
@@ -327,9 +334,8 @@ fn check_fnm_integration() -> Finding {
     #[cfg(windows)]
     {
         let home = std::env::var("USERPROFILE").unwrap_or_default();
-        let ps_profile = format!(
-            "{home}\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1"
-        );
+        let ps_profile =
+            format!("{home}\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1");
         let text = std::fs::read_to_string(&ps_profile).unwrap_or_default();
         if text.contains("fnm env") {
             Finding {
@@ -363,7 +369,11 @@ fn check_pip_installed() -> Finding {
             suggestion: None,
         };
     }
-    let py = if which::which("python").is_ok() { "python" } else { "python3" };
+    let py = if which::which("python").is_ok() {
+        "python"
+    } else {
+        "python3"
+    };
     match Command::new(py).args(["-m", "pip", "--version"]).output() {
         Ok(o) if o.status.success() => Finding {
             severity: Severity::Ok,
@@ -386,10 +396,18 @@ fn check_git_user_configured() -> Finding {
             suggestion: None,
         };
     }
-    let name = Command::new("git").args(["config", "--global", "user.name"]).output();
-    let email = Command::new("git").args(["config", "--global", "user.email"]).output();
-    let name_ok = name.map(|o| o.status.success() && !o.stdout.is_empty()).unwrap_or(false);
-    let email_ok = email.map(|o| o.status.success() && !o.stdout.is_empty()).unwrap_or(false);
+    let name = Command::new("git")
+        .args(["config", "--global", "user.name"])
+        .output();
+    let email = Command::new("git")
+        .args(["config", "--global", "user.email"])
+        .output();
+    let name_ok = name
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false);
+    let email_ok = email
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false);
     if name_ok && email_ok {
         Finding {
             severity: Severity::Ok,
@@ -398,8 +416,12 @@ fn check_git_user_configured() -> Finding {
         }
     } else {
         let mut missing = Vec::new();
-        if !name_ok { missing.push("user.name"); }
-        if !email_ok { missing.push("user.email"); }
+        if !name_ok {
+            missing.push("user.name");
+        }
+        if !email_ok {
+            missing.push("user.email");
+        }
         Finding {
             severity: Severity::Warn,
             message: format!("git 缺少配置：{}", missing.join(", ")),
@@ -414,7 +436,7 @@ fn check_gh_auth() -> Finding {
             severity: Severity::Error,
             message: "gh 不在 PATH".into(),
             suggestion: None,
-        }
+        };
     }
     match Command::new("gh").args(["auth", "status"]).output() {
         Ok(o) if o.status.success() => Finding {
@@ -562,7 +584,10 @@ mod tests {
 
     #[test]
     fn classify_key_check_error_on_401() {
-        assert_eq!(classify_key_check(true, Some(401)).severity, Severity::Error);
+        assert_eq!(
+            classify_key_check(true, Some(401)).severity,
+            Severity::Error
+        );
     }
 
     #[test]

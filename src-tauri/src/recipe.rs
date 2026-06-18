@@ -76,8 +76,8 @@ impl Recipe {
 
     pub fn load_from(dir: &Path, id: &str) -> Result<Self, String> {
         let path = dir.join(format!("{id}.toml"));
-        let text = std::fs::read_to_string(&path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         toml::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
     }
 
@@ -236,10 +236,7 @@ pub fn expand_env_vars(input: &str, env: &HashMap<String, String>) -> String {
                     out.push_str(&after[..close + 1]);
                     rest = &after[close + 1..];
                 } else {
-                    let val = env
-                        .get(key)
-                        .cloned()
-                        .unwrap_or_else(|| format!("%{key}%"));
+                    let val = env.get(key).cloned().unwrap_or_else(|| format!("%{key}%"));
                     out.push_str(&val);
                     rest = &after[close + 1..];
                 }
@@ -325,7 +322,10 @@ steps = [
         assert!(step.cmd.starts_with("powershell"));
         let arg = &step.args[1];
         assert!(arg.contains("python-3.12.7-embed.zip"), "got: {arg}");
-        assert!(!arg.contains("{python_version}"), "placeholder not replaced: {arg}");
+        assert!(
+            !arg.contains("{python_version}"),
+            "placeholder not replaced: {arg}"
+        );
     }
 
     #[test]
@@ -335,7 +335,10 @@ steps = [
         let r2 = r.substitute(&params).unwrap();
         let win = r2.install.get("windows").unwrap();
         let arg = &win.steps[0].args[1];
-        assert!(arg.contains("python-3.12.7-embed.zip"), "default not applied: {arg}");
+        assert!(
+            arg.contains("python-3.12.7-embed.zip"),
+            "default not applied: {arg}"
+        );
     }
 
     #[test]
@@ -343,7 +346,9 @@ steps = [
         let r: Recipe = toml::from_str(NODE_TOML).unwrap();
         // Force a placeholder into a step
         let mut bad = r.clone();
-        bad.install.get_mut("windows").unwrap().steps[0].args.push("echo {missing}".into());
+        bad.install.get_mut("windows").unwrap().steps[0]
+            .args
+            .push("echo {missing}".into());
         let params = HashMap::new();
         let err = bad.substitute(&params).unwrap_err();
         assert!(err.contains("missing"), "got: {err}");
@@ -368,7 +373,13 @@ steps = [
         let dir = std::env::temp_dir().join("flint_recipe_load_optional_test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        assert!(Recipe::load_optional("nonexistent_tool").is_none().then_some(()).is_none() == false);
+        assert!(
+            Recipe::load_optional("nonexistent_tool")
+                .is_none()
+                .then_some(())
+                .is_none()
+                == false
+        );
     }
 
     #[test]
@@ -424,7 +435,10 @@ steps = [ {{ cmd = "echo", args = ["{id}"] }} ]
     fn env_fixture() -> HashMap<String, String> {
         let mut h = HashMap::new();
         h.insert("USERPROFILE".into(), "C:\\Users\\me".into());
-        h.insert("LOCALAPPDATA".into(), "C:\\Users\\me\\AppData\\Local".into());
+        h.insert(
+            "LOCALAPPDATA".into(),
+            "C:\\Users\\me\\AppData\\Local".into(),
+        );
         h
     }
 
@@ -492,7 +506,10 @@ steps = [
         let r2 = r.substitute(&params).unwrap();
         let win = r2.install.get("windows").unwrap();
         assert_eq!(win.add_to_user_path.len(), 1);
-        assert_eq!(win.add_to_user_path[0], "%LOCALAPPDATA%\\Programs\\Python\\python-3.12.7");
+        assert_eq!(
+            win.add_to_user_path[0],
+            "%LOCALAPPDATA%\\Programs\\Python\\python-3.12.7"
+        );
     }
 
     /// Regression: every shipped recipe in `resources/recipes/` must parse
@@ -508,7 +525,11 @@ steps = [
             return;
         }
         let metas = Recipe::list_available_from(dir);
-        assert!(metas.len() >= 8, "expected 8 shipped recipes, found {}", metas.len());
+        assert!(
+            metas.len() >= 8,
+            "expected 8 shipped recipes, found {}",
+            metas.len()
+        );
         for m in &metas {
             let r = Recipe::load_from(dir, &m.id).unwrap_or_else(|e| {
                 panic!("recipe {} failed to load: {e}", m.id);
@@ -519,7 +540,11 @@ steps = [
                 m.id
             );
             let win = &r.install["windows"];
-            assert!(!win.steps.is_empty(), "recipe {} has no windows install steps", m.id);
+            assert!(
+                !win.steps.is_empty(),
+                "recipe {} has no windows install steps",
+                m.id
+            );
         }
     }
 }
