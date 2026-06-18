@@ -3,12 +3,23 @@ id = "bun"
 display_name = "Bun"
 category = "runtime"
 
+# 版本下拉：官方安装器 install.ps1 接受 -Version。传裸 semver（1.3.14）它会
+# 自动转成 bun-v1.3.14 下载；latest 则装最新。真实版本列表由后端
+# fetch_github_release_versions("oven-sh/bun", ...) 动态填充。
+[parameters.bun_version]
+label = "Bun 版本"
+default = "latest"
+options = [
+  { value = "latest", label = "最新 (推荐)" },
+]
+
 # bun 的官方安装器（PowerShell）会自动把 ~/.bun/bin 加到用户 PATH，
 # 并把 `bun` 命令注册到当前 shell。无需手动 PATH 配置。
+# 用 scriptblock 调用以便传 -Version 参数（irm | iex 无法带参数）。
 [install.windows]
 requires_elevation = false
 steps = [
-  { cmd = "powershell", args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm bun.sh/install.ps1 | iex"] },
+  { cmd = "powershell", args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "&([scriptblock]::Create((irm https://bun.sh/install.ps1))) -Version {bun_version}"] },
 ]
 
 [install.macos]

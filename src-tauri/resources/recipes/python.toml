@@ -30,7 +30,9 @@ steps = [
   { cmd = "powershell", args = ["-NoProfile", "-Command", "Expand-Archive -Path \"$env:TEMP\\python-{python_version}-embed.zip\" -DestinationPath \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\" -Force"] },
   # 4) 启用 site（embeddable 默认关闭，会导致 pip 不可用）。
   #    ._pth 文件名随版本变化（python313._pth 等），故通配匹配而非硬编码版本号。
-  { cmd = "powershell", args = ["-NoProfile", "-Command", "Get-ChildItem -Path \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\" -Filter 'python*._pth' | ForEach-Object {{ (Get-Content $_.FullName) -replace '^#import site', 'import site' | Set-Content $_.FullName }}"] },
+  #    注意：配方 substitute 把裸 { } 当占位符，故全程避开 {…} 脚本块/if 块，
+  #    用变量 + 管道；找不到 ._pth 时 Get-Content 静默跳过（-EA Ignore）。
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "$pth = (Get-ChildItem -Path \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\" -Filter 'python*._pth' -ErrorAction Ignore | Select-Object -First 1).FullName; (Get-Content $pth -ErrorAction Ignore) -replace '^#import site', 'import site' | Set-Content $pth -ErrorAction Ignore"] },
   # 5) 拉取并运行 get-pip.py
   { cmd = "powershell", args = ["-NoProfile", "-Command", "Invoke-WebRequest -Uri https://bootstrap.pypa.io/get-pip.py -OutFile \"$env:TEMP\\get-pip.py\"; & \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\\python.exe\" \"$env:TEMP\\get-pip.py\""] },
 ]

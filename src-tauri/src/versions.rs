@@ -147,6 +147,81 @@ pub async fn fetch_python_versions() -> Option<Vec<ParameterOption>> {
     }
 }
 
+/// One entry from the GitHub `/releases` API (only the fields we need).
+#[derive(serde::Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
+    draft: bool,
+}
+
+/// Parse a GitHub `/releases` JSON body into version options, newest first.
+/// Skips drafts and pre-releases. `strip_prefix` is removed from each tag to
+/// yield the bare version (e.g. "v" → "2.95.0", "bun-v" → "1.3.14"); tags
+/// that don't start with the prefix, or don't look like X.Y.Z afterwards, are
+/// dropped (filters out `untagged-*` and odd tags). Caps the list length.
+pub fn parse_github_tags(json: &str, strip_prefix: &str, cap: usize) -> Vec<ParameterOption> {
+    let releases: Vec<GithubRelease> = match serde_json::from_str(json) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    releases
+        .into_iter()
+        .filter(|r| !r.prerelease && !r.draft)
+        .filter_map(|r| {
+            let ver = r.tag_name.strip_prefix(strip_prefix)?;
+            // Keep only clean X.Y.Z (drops rc/untagged/odd tags).
+            if ver.split('.').count() == 3
+                && ver
+                    .split('.')
+                    .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+            {
+                Some(ParameterOption {
+                    value: ver.to_string(),
+                    label: ver.to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .take(cap)
+        .collect()
+}
+
+/// Fetch versions from a GitHub repo's releases (newest first). `repo` is
+/// "owner/name", `strip_prefix` turns a tag into a bare version. Returns
+/// `None` on any network/parse failure — caller falls back to static options.
+/// GitHub's API requires a User-Agent header.
+pub async fn fetch_github_release_versions(
+    repo: &str,
+    strip_prefix: &str,
+    cap: usize,
+) -> Option<Vec<ParameterOption>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .ok()?;
+    let url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
+    let body = client
+        .get(&url)
+        .header("User-Agent", "flint-dev-launcher")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+    let opts = parse_github_tags(&body, strip_prefix, cap);
+    if opts.is_empty() {
+        None
+    } else {
+        Some(opts)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +300,54 @@ v23.0.0
     #[test]
     fn parse_python_eol_handles_garbage() {
         assert!(parse_python_eol("not json").is_empty());
+    }
+
+    // ---- parse_github_tags (bun / gh version lists) ----
+
+    const GH_RELEASES_SAMPLE: &str = r#"[
+        {"tag_name":"v2.95.0","prerelease":false,"draft":false},
+        {"tag_name":"v2.94.0","prerelease":false,"draft":false},
+        {"tag_name":"v2.96.0-rc1","prerelease":true,"draft":false},
+        {"tag_name":"untagged-abc123","prerelease":false,"draft":false},
+        {"tag_name":"v2.93.0","prerelease":false,"draft":true}
+    ]"#;
+
+    #[test]
+    fn parse_github_tags_strips_prefix_and_keeps_clean_versions() {
+        let opts = parse_github_tags(GH_RELEASES_SAMPLE, "v", 10);
+        // Only the two clean, non-prerelease, non-draft releases survive.
+        assert_eq!(opts.len(), 2);
+        assert_eq!(opts[0].value, "2.95.0");
+        assert_eq!(opts[1].value, "2.94.0");
+    }
+
+    #[test]
+    fn parse_github_tags_drops_prerelease_draft_and_untagged() {
+        let opts = parse_github_tags(GH_RELEASES_SAMPLE, "v", 10);
+        assert!(!opts.iter().any(|o| o.value.contains("rc")));
+        assert!(!opts.iter().any(|o| o.value.contains("untagged")));
+        assert!(!opts.iter().any(|o| o.value == "2.93.0")); // draft
+    }
+
+    #[test]
+    fn parse_github_tags_handles_bun_prefix() {
+        let bun = r#"[
+            {"tag_name":"bun-v1.3.14","prerelease":false,"draft":false},
+            {"tag_name":"bun-v1.3.13","prerelease":false,"draft":false}
+        ]"#;
+        let opts = parse_github_tags(bun, "bun-v", 10);
+        assert_eq!(opts.len(), 2);
+        assert_eq!(opts[0].value, "1.3.14");
+    }
+
+    #[test]
+    fn parse_github_tags_respects_cap() {
+        let opts = parse_github_tags(GH_RELEASES_SAMPLE, "v", 1);
+        assert_eq!(opts.len(), 1);
+    }
+
+    #[test]
+    fn parse_github_tags_handles_garbage() {
+        assert!(parse_github_tags("not json", "v", 10).is_empty());
     }
 }

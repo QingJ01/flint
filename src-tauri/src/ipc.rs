@@ -147,6 +147,8 @@ pub async fn list_tool_versions(tool_id: String) -> Result<Vec<ParameterOption>,
     let dynamic = match tool_id.as_str() {
         "node" => versions::fetch_node_versions(12).await,
         "python" => versions::fetch_python_versions().await,
+        "bun" => versions::fetch_github_release_versions("oven-sh/bun", "bun-v", 12).await,
+        "github-cli" => versions::fetch_github_release_versions("cli/cli", "v", 12).await,
         _ => None,
     };
     Ok(dynamic.unwrap_or_else(|| recipe_static_version_options(&tool_id)))

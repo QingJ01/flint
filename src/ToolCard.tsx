@@ -152,6 +152,35 @@ export function ToolCard(props: Props) {
           />
           <DiagnoseButton onClick={() => onDiagnose(meta.id)} busy={busy} />
         </div>
+      ) : meta.id === "git" ? (
+        // Git has no version dropdown (its release asset names are
+        // irregular), but its recipe installs the *latest* stable MinGit at
+        // runtime — so offer a first-class "升级到最新" alongside 诊断.
+        <div className="mt-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => onInstall(meta.id)}
+            disabled={busy}
+            className={
+              "inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition disabled:cursor-not-allowed " +
+              (isThisBusy
+                ? "border-accent bg-accent text-white"
+                : isOtherBusy
+                  ? "border-line bg-surface text-ink-faint"
+                  : "border-line bg-surface text-ink hover:border-line-strong hover:bg-cream-deep")
+            }
+          >
+            {isThisBusy ? (
+              <>
+                <SpinnerIcon className="h-3 w-3 animate-spin" />
+                升级中…
+              </>
+            ) : (
+              "升级到最新"
+            )}
+          </button>
+          <DiagnoseButton onClick={() => onDiagnose(meta.id)} busy={busy} />
+        </div>
       ) : (
         <div className="mt-auto flex flex-col gap-1.5">
           <DiagnoseButton

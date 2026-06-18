@@ -547,4 +547,28 @@ steps = [
             );
         }
     }
+
+    /// Regression: every shipped recipe must `substitute()` cleanly with empty
+    /// params (i.e. relying on declared defaults). This catches the trap where
+    /// a PowerShell step contains a bare `{ … }` (hashtable literal,
+    /// `ForEach-Object { }`, `if { }`) that the placeholder substituter
+    /// mistakes for an undeclared `{param}` and errors on — which would make
+    /// that tool's install fail at runtime. Parsing-only tests miss this.
+    #[test]
+    fn shipped_recipes_substitute_with_defaults() {
+        let dir = std::path::Path::new("resources/recipes");
+        if !dir.exists() {
+            return;
+        }
+        for m in Recipe::list_available_from(dir) {
+            let r = Recipe::load_from(dir, &m.id).unwrap();
+            r.substitute(&HashMap::new()).unwrap_or_else(|e| {
+                panic!(
+                    "recipe {} fails to substitute with default params \
+                     (likely a bare {{ }} in a PowerShell step): {e}",
+                    m.id
+                );
+            });
+        }
+    }
 }

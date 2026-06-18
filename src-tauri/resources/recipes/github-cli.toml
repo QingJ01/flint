@@ -3,6 +3,15 @@ id = "github-cli"
 display_name = "GitHub CLI"
 category = "runtime"
 
+# 版本下拉：releases 资产名规整（gh_{ver}_windows_amd64.zip），可直接拼 URL。
+# 真实版本列表由后端 fetch_github_release_versions("cli/cli", "v", ...) 填充。
+[parameters.gh_version]
+label = "gh 版本"
+default = "2.62.0"
+options = [
+  { value = "2.62.0", label = "2.62.0" },
+]
+
 # 官方 windows_amd64 zip → 解压到 %LOCALAPPDATA%\Programs\gh → 加 bin 到 PATH
 [install.windows]
 requires_elevation = false
@@ -11,7 +20,7 @@ add_to_user_path = [
 ]
 steps = [
   { cmd = "powershell", args = ["-NoProfile", "-Command", "New-Item -ItemType Directory -Force -Path \"$env:LOCALAPPDATA\\Programs\\gh\" | Out-Null"] },
-  { cmd = "powershell", args = ["-NoProfile", "-Command", "Invoke-WebRequest -Uri \"https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_windows_amd64.zip\" -OutFile \"$env:TEMP\\gh.zip\""] },
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "Invoke-WebRequest -Uri \"https://github.com/cli/cli/releases/download/v{gh_version}/gh_{gh_version}_windows_amd64.zip\" -OutFile \"$env:TEMP\\gh.zip\""] },
   { cmd = "powershell", args = ["-NoProfile", "-Command", "Expand-Archive -Path \"$env:TEMP\\gh.zip\" -DestinationPath \"$env:LOCALAPPDATA\\Programs\\gh\" -Force"] },
 ]
 
