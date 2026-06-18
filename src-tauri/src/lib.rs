@@ -1,18 +1,20 @@
-pub mod error;
-pub mod version;
-pub mod recipe;
-pub mod preset;
-pub mod executor;
-pub mod detector;
-pub mod wsl;
-pub mod diagnose;
-pub mod ipc;
 pub mod config;
+pub mod detector;
+pub mod diagnose;
+pub mod error;
+pub mod executor;
+pub mod ipc;
+pub mod preset;
+pub mod recipe;
 pub mod shell;
+pub mod snapshot;
+pub mod version;
+pub mod wsl;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             ipc::detect_environment,
             ipc::list_installable_tools,
@@ -27,7 +29,10 @@ pub fn run() {
             ipc::apply_pip_mirror,
             ipc::apply_domestic_acceleration,
             ipc::diagnose_tool,
-            ipc::verify_anthropic_key
+            ipc::verify_anthropic_key,
+            ipc::current_snapshot,
+            ipc::export_snapshot,
+            ipc::import_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

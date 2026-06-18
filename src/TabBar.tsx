@@ -11,6 +11,7 @@ const tabs: { id: View; label: string }[] = [
   { id: "presets", label: "预设" },
   { id: "wsl", label: "WSL" },
   { id: "mirrors", label: "镜像" },
+  { id: "snapshot", label: "快照" },
 ];
 
 export function TabBar(props: Props) {

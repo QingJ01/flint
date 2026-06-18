@@ -1,8 +1,8 @@
 use crate::error::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ToolCategory {
     Runtime,
@@ -18,7 +18,7 @@ pub struct ToolSpec {
     pub args: &'static [&'static str],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolStatus {
     pub id: String,
     pub display_name: String,
@@ -195,7 +195,10 @@ mod tests {
 
     #[test]
     fn extracts_semver_from_prefixed_output() {
-        assert_eq!(extract_version("git version 2.45.1\n").as_deref(), Some("2.45.1"));
+        assert_eq!(
+            extract_version("git version 2.45.1\n").as_deref(),
+            Some("2.45.1")
+        );
     }
 
     #[test]
@@ -214,7 +217,10 @@ mod tests {
             "pnpm",
             "uv",
         ] {
-            assert!(ids.contains(&expected), "missing {expected} in tool catalog");
+            assert!(
+                ids.contains(&expected),
+                "missing {expected} in tool catalog"
+            );
         }
     }
 

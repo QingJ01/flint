@@ -67,8 +67,17 @@ export type DiagnosticReport = {
 export type InstallEvent =
   | { type: "Log"; line: string }
   | { type: "Progress"; pct: number }
-  | { type: "Done"; ok: boolean; version: string | null; error: string | null };
+  | { type: "Done"; ok: boolean; version: string | null; error: string | null }
+  | { type: "RestoreSection"; name: string };
 
-export type View = "dashboard" | "presets" | "wsl" | "mirrors";
+export type Snapshot = {
+  schema: number;
+  tools: ToolStatus[];
+  npm_registry: string | null;
+  pip_registry: string | null;
+  wsl: WslStatus | null;
+};
+
+export type View = "dashboard" | "presets" | "wsl" | "mirrors" | "snapshot";
 
 export type ParamMap = Record<string, Record<string, string>>;

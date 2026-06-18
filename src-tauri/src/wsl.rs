@@ -1,10 +1,10 @@
 use crate::error::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 
 /// Coarse-grained state for the WSL feature on this machine. The frontend
 /// drives its wizard off this; transitions trigger different actions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WslState {
     /// `wsl.exe` itself is not on PATH (older Windows builds, or removed).
@@ -18,7 +18,7 @@ pub enum WslState {
 }
 
 /// Snapshot of the WSL subsystem, suitable for the dashboard.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WslStatus {
     pub state: WslState,
     pub default_distro: Option<String>,
@@ -83,8 +83,7 @@ fn parse_default_distro(s: &str) -> Option<String> {
     for line in s.lines() {
         let lower = line.to_lowercase();
         if lower.starts_with("default distribution:") {
-            return Some(line.splitn(2, ':').nth(1)?.trim().to_string())
-                .filter(|v| !v.is_empty());
+            return Some(line.splitn(2, ':').nth(1)?.trim().to_string()).filter(|v| !v.is_empty());
         }
     }
     None
@@ -219,7 +218,8 @@ mod tests {
 
     const READY_OUTPUT: &str = "Default Distribution: Ubuntu\nDefault Version: 2\n\nThe WSL 2 kernel file is located at C:\\...";
 
-    const ENABLED_OUTPUT: &str = "Default Version: 2\n\nWindows Subsystem for Linux has no installed distributions.\n";
+    const ENABLED_OUTPUT: &str =
+        "Default Version: 2\n\nWindows Subsystem for Linux has no installed distributions.\n";
 
     const DISABLED_OUTPUT: &str = "The Windows Subsystem for Linux optional component is not enabled. Please enable it using the PowerShell cmdlet: wsl --install.";
 
@@ -274,8 +274,7 @@ mod tests {
         // feature is off; the helper should classify it as NotInstalled,
         // not Unknown.
         let stdout = "";
-        let stderr =
-            "The Windows Subsystem for Linux optional component is not enabled.";
+        let stderr = "The Windows Subsystem for Linux optional component is not enabled.";
         let s = parse_wsl_status(stdout, stderr, false);
         assert_eq!(s.state, WslState::NotInstalled);
     }
@@ -310,6 +309,9 @@ mod tests {
     #[test]
     fn decode_falls_back_to_utf8_for_plain_ascii() {
         // Plain UTF-8/ASCII with no NULs stays as-is (no false UTF-16 decode).
-        assert_eq!(decode_wsl_output(b"plain ascii output"), "plain ascii output");
+        assert_eq!(
+            decode_wsl_output(b"plain ascii output"),
+            "plain ascii output"
+        );
     }
 }

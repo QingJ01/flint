@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
 import { DashboardView } from "./DashboardView";
 import { PresetsView } from "./PresetsView";
 import { WslView } from "./WslView";
 import { MirrorsView } from "./MirrorsView";
+import { SnapshotView } from "./SnapshotView";
 import { DiagnosticModal } from "./DiagnosticModal";
 import { RefreshIcon } from "./icons";
 import { logClass } from "./format";
@@ -106,7 +108,11 @@ export default function App() {
 
   // ----- shared streaming-runner for any IPC that takes a Channel -----
   function runStreaming(
-    cmd: "install_tool" | "wsl_enable" | "wsl_install_dev_tools",
+    cmd:
+      | "install_tool"
+      | "wsl_enable"
+      | "wsl_install_dev_tools"
+      | "import_snapshot",
     args: Record<string, unknown>,
   ): Promise<{ ok: boolean; version: string | null; error: string | null }> {
     return new Promise((resolve) => {
@@ -116,6 +122,10 @@ export default function App() {
       ch.onmessage = (event) => {
         if (event.type === "Log") {
           setLogs((cur) => [...cur, event.line]);
+          return;
+        }
+        if (event.type === "RestoreSection") {
+          setLogs((cur) => [...cur, `── ${event.name} ──`]);
           return;
         }
         if (event.type === "Progress") {
@@ -153,6 +163,44 @@ export default function App() {
       setLogs((cur) => [...cur, `✓ 安装成功${ver}`]);
     } else {
       setLogs((cur) => [...cur, `✗ ${res.error ?? "安装失败"}`]);
+    }
+    void refresh();
+  }
+
+  // ----- snapshot: export -----
+  async function exportSnapshot() {
+    if (busy) return;
+    const path = await save({
+      title: "导出环境快照",
+      defaultPath: "flint-snapshot.json",
+      filters: [{ name: "Flint 快照", extensions: ["json"] }],
+    });
+    if (!path) return; // user cancelled
+    try {
+      await invoke("export_snapshot", { path });
+      setLogs((cur) => [...cur, `✓ 已导出快照：${path}`]);
+    } catch (e) {
+      setLogs((cur) => [...cur, `✗ 导出失败：${String(e)}`]);
+    }
+  }
+
+  // ----- snapshot: import (smart restore) -----
+  async function importSnapshot() {
+    if (busy) return;
+    const selected = await open({
+      title: "选择要还原的快照",
+      multiple: false,
+      filters: [{ name: "Flint 快照", extensions: ["json"] }],
+    });
+    if (!selected || typeof selected !== "string") return; // cancelled
+    setBusy(true);
+    setLogs([`从快照还原：${selected}`]);
+    const res = await runStreaming("import_snapshot", { path: selected });
+    setBusy(false);
+    if (res.ok) {
+      setLogs((cur) => [...cur, "✓ 还原完成"]);
+    } else {
+      setLogs((cur) => [...cur, `✗ ${res.error ?? "还原过程中有工具失败"}`]);
     }
     void refresh();
   }
@@ -421,6 +469,13 @@ export default function App() {
                 onApplyNpm={(url) => void applyNpmMirror(url)}
                 onApplyPip={(url) => void applyPipMirror(url)}
                 onAccelerate={() => void applyDomestic()}
+              />
+            )}
+            {view === "snapshot" && (
+              <SnapshotView
+                busy={busy}
+                onExport={() => void exportSnapshot()}
+                onImport={() => void importSnapshot()}
               />
             )}
           </div>

@@ -7,6 +7,7 @@ use crate::{
     detector::{self, ToolCategory, ToolStatus},
     executor::{self, StreamEvent},
     recipe::{self, Recipe},
+    snapshot,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -18,9 +19,22 @@ use tauri::ipc::Channel;
 #[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum InstallEvent {
-    Log { line: String },
-    Progress { pct: u8 },
-    Done { ok: bool, version: Option<String>, error: Option<String> },
+    Log {
+        line: String,
+    },
+    Progress {
+        pct: u8,
+    },
+    Done {
+        ok: bool,
+        version: Option<String>,
+        error: Option<String>,
+    },
+    /// Restore-only: marks the start of a logical section (e.g. "安装缺失工具",
+    /// "应用镜像") so the snapshot-import UI can group its log output.
+    RestoreSection {
+        name: String,
+    },
 }
 
 #[derive(Serialize, Clone)]
@@ -96,14 +110,11 @@ pub async fn apply_pip_mirror(index_url: String) -> Result<bool, String> {
 /// the UI can summarize what happened.
 #[tauri::command]
 pub async fn apply_domestic_acceleration() -> Result<Vec<(String, bool)>, String> {
-    let npm = config::apply_npm_registry("https://registry.npmmirror.com/")
-        .map_err(|e| e.to_string())?;
+    let npm =
+        config::apply_npm_registry("https://registry.npmmirror.com/").map_err(|e| e.to_string())?;
     let pip = config::apply_pip_registry("https://pypi.tuna.tsinghua.edu.cn/simple")
         .map_err(|e| e.to_string())?;
-    Ok(vec![
-        ("npm".into(), npm),
-        ("pip".into(), pip),
-    ])
+    Ok(vec![("npm".into(), npm), ("pip".into(), pip)])
 }
 
 /// Run the diagnostic checks for a given tool and return a structured
@@ -111,7 +122,9 @@ pub async fn apply_domestic_acceleration() -> Result<Vec<(String, bool)>, String
 /// as findings with `severity: error`.
 #[tauri::command]
 pub async fn diagnose_tool(tool_id: String) -> Result<DiagnosticReport, String> {
-    diagnose::run_diagnostics(&tool_id).await.map_err(|e| e.to_string())
+    diagnose::run_diagnostics(&tool_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Opt-in: validate the Anthropic API key by hitting the (free)
@@ -121,6 +134,126 @@ pub async fn diagnose_tool(tool_id: String) -> Result<DiagnosticReport, String> 
 #[tauri::command]
 pub async fn verify_anthropic_key() -> Result<Finding, String> {
     Ok(diagnose::verify_anthropic_key().await)
+}
+
+/// Build a snapshot of the current environment (for preview in the UI).
+#[tauri::command]
+pub async fn current_snapshot() -> Result<snapshot::Snapshot, String> {
+    snapshot::build().map_err(|e| e.to_string())
+}
+
+/// Capture the current environment and write it to `path` as JSON. The
+/// frontend obtains `path` from a native save dialog.
+#[tauri::command]
+pub async fn export_snapshot(path: String) -> Result<(), String> {
+    let snap = snapshot::build().map_err(|e| e.to_string())?;
+    snapshot::export_to(Path::new(&path), &snap).map_err(|e| e.to_string())
+}
+
+/// Load a snapshot from `path` and "smart restore" it: install every tool
+/// the snapshot had installed but this machine lacks, then apply the npm/pip
+/// mirrors. Never uninstalls and never touches PATH directly (install steps
+/// do their own PATH additions). Streams progress over `on_event`.
+#[tauri::command]
+pub async fn import_snapshot(path: String, on_event: Channel<InstallEvent>) -> Result<(), String> {
+    let snap = snapshot::load(Path::new(&path)).map_err(|e| e.to_string())?;
+
+    // What's already here — so we skip tools that don't need reinstalling.
+    let present: std::collections::HashSet<String> = detector::detect_environment()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|t| t.installed)
+        .map(|t| t.id)
+        .collect();
+
+    // ---- Section 1: install missing tools ----
+    let _ = on_event.send(InstallEvent::RestoreSection {
+        name: "安装缺失工具".into(),
+    });
+    let wanted: Vec<&ToolStatus> = snap
+        .tools
+        .iter()
+        .filter(|t| t.installed && !present.contains(&t.id))
+        .collect();
+    if wanted.is_empty() {
+        let _ = on_event.send(InstallEvent::Log {
+            line: "[ok] 快照里的工具本机都已安装，无需安装".into(),
+        });
+    }
+    let total = wanted.len().max(1);
+    let mut failures: Vec<String> = Vec::new();
+    for (i, tool) in wanted.iter().enumerate() {
+        let _ = on_event.send(InstallEvent::Log {
+            line: format!("[restore] 安装 {} ({}/{})", tool.id, i + 1, wanted.len()),
+        });
+        // Use recipe defaults for params (snapshot doesn't record the exact
+        // version params the user picked — restoring "latest"/default is the
+        // pragmatic choice and matches what the dashboard one-click does).
+        let params: HashMap<String, String> = HashMap::new();
+        if let Err(e) = install_recipe(&tool.id, &params, &on_event).await {
+            let _ = on_event.send(InstallEvent::Log {
+                line: format!("[warn] {} 安装失败：{e}（继续其余）", tool.id),
+            });
+            failures.push(tool.id.clone());
+        }
+        let _ = on_event.send(InstallEvent::Progress {
+            pct: ((i + 1) * 100 / total) as u8,
+        });
+    }
+
+    // ---- Section 2: apply mirrors ----
+    let _ = on_event.send(InstallEvent::RestoreSection {
+        name: "应用镜像".into(),
+    });
+    if let Some(url) = &snap.npm_registry {
+        match config::apply_npm_registry(url) {
+            Ok(true) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[ok] npm 源 → {url}"),
+                });
+            }
+            Ok(false) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[skip] npm 源已是 {url}"),
+                });
+            }
+            Err(e) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[warn] 设置 npm 源失败：{e}"),
+                });
+            }
+        }
+    }
+    if let Some(url) = &snap.pip_registry {
+        match config::apply_pip_registry(url) {
+            Ok(true) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[ok] pip 源 → {url}"),
+                });
+            }
+            Ok(false) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[skip] pip 源已是 {url}"),
+                });
+            }
+            Err(e) => {
+                let _ = on_event.send(InstallEvent::Log {
+                    line: format!("[warn] 设置 pip 源失败：{e}"),
+                });
+            }
+        }
+    }
+
+    let _ = on_event.send(InstallEvent::Done {
+        ok: failures.is_empty(),
+        version: None,
+        error: if failures.is_empty() {
+            None
+        } else {
+            Some(format!("以下工具未能安装：{}", failures.join(", ")))
+        },
+    });
+    Ok(())
 }
 
 /// Trigger the Windows "enable WSL" flow. This is the one operation that
@@ -280,14 +413,30 @@ pub async fn install_tool(
     params: HashMap<String, String>,
     on_event: Channel<InstallEvent>,
 ) -> Result<(), String> {
-    let recipe = Recipe::load_optional(&id)
-        .ok_or_else(|| format!("unknown tool id: '{id}' (no recipe at resources/recipes/{id}.toml)"))?;
+    install_recipe(&id, &params, &on_event).await
+}
+
+/// Execution core for installing a single tool. Extracted from the
+/// `install_tool` command so `import_snapshot` can replay installs through
+/// the exact same machinery (steps → post-install hooks → PATH additions →
+/// version check). The `on_event` channel is borrowed, not owned, so the
+/// caller can drive many installs over one channel.
+pub async fn install_recipe(
+    id: &str,
+    params: &HashMap<String, String>,
+    on_event: &Channel<InstallEvent>,
+) -> Result<(), String> {
+    let recipe = Recipe::load_optional(id).ok_or_else(|| {
+        format!("unknown tool id: '{id}' (no recipe at resources/recipes/{id}.toml)")
+    })?;
     let platform = current_platform();
     if !recipe.install.contains_key(platform) {
-        return Err(format!("recipe '{id}' has no install steps for platform '{platform}'"));
+        return Err(format!(
+            "recipe '{id}' has no install steps for platform '{platform}'"
+        ));
     }
 
-    let substituted = recipe.substitute(&params).map_err(|e| e.to_string())?;
+    let substituted = recipe.substitute(params).map_err(|e| e.to_string())?;
     let substituted_install = substituted
         .install
         .get(platform)
@@ -327,7 +476,7 @@ pub async fn install_tool(
     }
 
     // Per-tool post-install hooks.
-    match id.as_str() {
+    match id {
         "node" => {
             // fnm needs the PowerShell profile integration so a new terminal
             // can resolve `node` (fnm install only places the binary in fnm's
@@ -388,9 +537,10 @@ pub async fn install_tool(
     // install, this process's env is stale (registry is the source of truth
     // for the *next* shell). We still try, and surface a hint if the
     // freshly-installed tool isn't on our PATH yet.
-    let version = detector::detect_version(&recipe_detect_cmd(&recipe), &recipe_detect_args(&recipe))
-        .ok()
-        .flatten();
+    let version =
+        detector::detect_version(&recipe_detect_cmd(&recipe), &recipe_detect_args(&recipe))
+            .ok()
+            .flatten();
     if version.is_none() {
         let _ = on_event.send(InstallEvent::Log {
             line: "[!] 安装成功，但当前进程 PATH 未刷新；请重开终端后再点『重新检测』".into(),
