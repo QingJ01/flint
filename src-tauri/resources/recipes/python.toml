@@ -28,8 +28,9 @@ steps = [
   { cmd = "powershell", args = ["-NoProfile", "-Command", "Invoke-WebRequest -Uri \"https://www.python.org/ftp/python/{python_version}/python-{python_version}-embed-amd64.zip\" -OutFile \"$env:TEMP\\python-{python_version}-embed.zip\""] },
   # 3) 解压
   { cmd = "powershell", args = ["-NoProfile", "-Command", "Expand-Archive -Path \"$env:TEMP\\python-{python_version}-embed.zip\" -DestinationPath \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\" -Force"] },
-  # 4) 启用 site（embeddable 默认关闭，会导致 pip 不可用）
-  { cmd = "powershell", args = ["-NoProfile", "-Command", "if (Test-Path \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\\python312._pth\") {{ (Get-Content \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\\python312._pth\") -replace '^#import site', 'import site' | Set-Content \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\\python312._pth\" }}"] },
+  # 4) 启用 site（embeddable 默认关闭，会导致 pip 不可用）。
+  #    ._pth 文件名随版本变化（python313._pth 等），故通配匹配而非硬编码版本号。
+  { cmd = "powershell", args = ["-NoProfile", "-Command", "Get-ChildItem -Path \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\" -Filter 'python*._pth' | ForEach-Object {{ (Get-Content $_.FullName) -replace '^#import site', 'import site' | Set-Content $_.FullName }}"] },
   # 5) 拉取并运行 get-pip.py
   { cmd = "powershell", args = ["-NoProfile", "-Command", "Invoke-WebRequest -Uri https://bootstrap.pypa.io/get-pip.py -OutFile \"$env:TEMP\\get-pip.py\"; & \"$env:LOCALAPPDATA\\Programs\\Python\\python-{python_version}\\python.exe\" \"$env:TEMP\\get-pip.py\""] },
 ]

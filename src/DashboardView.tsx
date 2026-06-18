@@ -4,6 +4,7 @@ import {
   categoryOrder,
 } from "./constants";
 import type {
+  ParameterOption,
   ToolMeta,
   ToolStatus,
   ParamMap,
@@ -15,7 +16,10 @@ type Props = {
   busy: boolean;
   busyTool: string | null;
   params: ParamMap;
+  dynamicVersions: Record<string, ParameterOption[]>;
+  versionsLoading: string | null;
   onParamChange: (toolId: string, key: string, value: string) => void;
+  onLoadVersions: (id: string) => void;
   onInstall: (id: string) => void;
   onDiagnose: (id: string) => void;
 };
@@ -27,7 +31,10 @@ export function DashboardView(props: Props) {
     busy,
     busyTool,
     params,
+    dynamicVersions,
+    versionsLoading,
     onParamChange,
+    onLoadVersions,
     onInstall,
     onDiagnose,
   } = props;
@@ -61,7 +68,10 @@ export function DashboardView(props: Props) {
                   busy={busy}
                   busyTool={busyTool}
                   paramValue={params[m.id]?.[m.parameters[0]?.key ?? ""]}
+                  versionOptions={dynamicVersions[m.id]}
+                  versionsLoading={versionsLoading === m.id}
                   onParamChange={(key, value) => onParamChange(m.id, key, value)}
+                  onLoadVersions={onLoadVersions}
                   onInstall={onInstall}
                   onDiagnose={onDiagnose}
                 />

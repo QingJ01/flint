@@ -9,6 +9,7 @@ pub mod recipe;
 pub mod shell;
 pub mod snapshot;
 pub mod version;
+pub mod versions;
 pub mod wsl;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -30,6 +31,7 @@ pub fn run() {
             ipc::apply_domestic_acceleration,
             ipc::diagnose_tool,
             ipc::verify_anthropic_key,
+            ipc::list_tool_versions,
             ipc::current_snapshot,
             ipc::export_snapshot,
             ipc::import_snapshot

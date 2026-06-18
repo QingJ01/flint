@@ -14,6 +14,7 @@ import type {
   DiagnosticReport,
   InstallEvent,
   MirrorStatus,
+  ParameterOption,
   ParamMap,
   PresetFull,
   PresetMeta,
@@ -49,6 +50,10 @@ export default function App() {
   const [diagTarget, setDiagTarget] = useState<string | null>(null);
   const [diagReport, setDiagReport] = useState<DiagnosticReport | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
+  const [dynamicVersions, setDynamicVersions] = useState<
+    Record<string, ParameterOption[]>
+  >({});
+  const [versionsLoading, setVersionsLoading] = useState<string | null>(null);
   const settled = useRef(false);
   const logEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -146,11 +151,41 @@ export default function App() {
     });
   }
 
-  // ----- dashboard: single-tool install -----
+  // ----- dashboard: lazily fetch the real version list for a tool -----
+  // Triggered on dropdown focus. Cached per tool — only the first focus hits
+  // the backend (which may run fnm / a network call). Failures are silent;
+  // the card keeps showing the recipe's static options.
+  async function loadVersions(id: string) {
+    if (dynamicVersions[id] || versionsLoading === id) return;
+    setVersionsLoading(id);
+    try {
+      const opts = await invoke<ParameterOption[]>("list_tool_versions", {
+        toolId: id,
+      });
+      if (opts.length > 0) {
+        setDynamicVersions((cur) => ({ ...cur, [id]: opts }));
+      }
+    } catch {
+      // keep static options
+    } finally {
+      setVersionsLoading(null);
+    }
+  }
+
+  // ----- dashboard: single-tool install / version switch -----
   async function installOne(id: string) {
     if (busy) return;
+    const tool = tools.find((t) => t.id === id);
+    const switching = tool?.installed ?? false;
+    const targetVer = params[id]
+      ? Object.values(params[id])[0]
+      : undefined;
     setBusy(true);
-    setLogs([]);
+    setLogs(
+      switching
+        ? [`正在切换 ${tool?.display_name ?? id}${targetVer ? ` 到 ${targetVer}` : ""}（将覆盖当前安装）`]
+        : [],
+    );
     setBusyTool(id);
     const res = await runStreaming("install_tool", {
       id,
@@ -160,9 +195,9 @@ export default function App() {
     setBusyTool(null);
     if (res.ok) {
       const ver = res.version ? ` · v${res.version}` : "";
-      setLogs((cur) => [...cur, `✓ 安装成功${ver}`]);
+      setLogs((cur) => [...cur, `✓ ${switching ? "切换成功" : "安装成功"}${ver}`]);
     } else {
-      setLogs((cur) => [...cur, `✗ ${res.error ?? "安装失败"}`]);
+      setLogs((cur) => [...cur, `✗ ${res.error ?? (switching ? "切换失败" : "安装失败")}`]);
     }
     void refresh();
   }
@@ -441,7 +476,10 @@ export default function App() {
                 busy={busy}
                 busyTool={busyTool}
                 params={params}
+                dynamicVersions={dynamicVersions}
+                versionsLoading={versionsLoading}
                 onParamChange={setParam}
+                onLoadVersions={(id) => void loadVersions(id)}
                 onInstall={(id) => void installOne(id)}
                 onDiagnose={(id) => void openDiagnostic(id)}
               />

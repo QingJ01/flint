@@ -7,7 +7,7 @@ use crate::{
     detector::{self, ToolCategory, ToolStatus},
     executor::{self, StreamEvent},
     recipe::{self, Recipe},
-    snapshot,
+    snapshot, versions,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -134,6 +134,36 @@ pub async fn diagnose_tool(tool_id: String) -> Result<DiagnosticReport, String> 
 #[tauri::command]
 pub async fn verify_anthropic_key() -> Result<Finding, String> {
     Ok(diagnose::verify_anthropic_key().await)
+}
+
+/// Return the version options to show in a tool's dropdown. For `node` and
+/// `python` we fetch the *real* available versions at request time (fnm /
+/// endoflife.date); on any failure — or for any other tool — we fall back to
+/// the recipe's static `[parameters.*_version]` options. Best-effort: never
+/// errors, so the dropdown always has something. Lazy: the frontend calls
+/// this on demand (dropdown focus), not on dashboard load.
+#[tauri::command]
+pub async fn list_tool_versions(tool_id: String) -> Result<Vec<ParameterOption>, String> {
+    let dynamic = match tool_id.as_str() {
+        "node" => versions::fetch_node_versions(12).await,
+        "python" => versions::fetch_python_versions().await,
+        _ => None,
+    };
+    Ok(dynamic.unwrap_or_else(|| recipe_static_version_options(&tool_id)))
+}
+
+/// Pull the static version options out of a recipe's first parameter that has
+/// any (the `*_version` param). Empty vec if the recipe has none.
+fn recipe_static_version_options(tool_id: &str) -> Vec<ParameterOption> {
+    let Some(recipe) = Recipe::load_optional(tool_id) else {
+        return Vec::new();
+    };
+    recipe
+        .parameters
+        .values()
+        .find(|def| !def.options.is_empty())
+        .map(|def| def.options.clone())
+        .unwrap_or_default()
 }
 
 /// Build a snapshot of the current environment (for preview in the UI).
