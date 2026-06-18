@@ -534,6 +534,28 @@ pub async fn install_recipe(
                 }
             }
         }
+        "python" => {
+            // Switching Python versions: Flint installs each version in its
+            // own `python-{ver}` dir and only ever *appends* to PATH. Without
+            // pruning the old version's dirs, `python` keeps resolving to the
+            // first match (the old version). Remove every Flint python-* dir
+            // except the target's, *before* the add-to-PATH step below re-adds
+            // the target — so the target becomes the only Flint Python on PATH.
+            if let Some(ver) = params.get("python_version") {
+                match config::prune_user_python_paths(ver) {
+                    Ok(()) => {
+                        let _ = on_event.send(InstallEvent::Log {
+                            line: format!("[ok] 已清理旧版 Python 的 PATH，目标版本 {ver} 生效"),
+                        });
+                    }
+                    Err(e) => {
+                        let _ = on_event.send(InstallEvent::Log {
+                            line: format!("[warn] 清理旧版 Python PATH 失败：{e}"),
+                        });
+                    }
+                }
+            }
+        }
         _ => {}
     }
 

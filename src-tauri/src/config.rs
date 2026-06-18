@@ -67,6 +67,63 @@ pub fn add_to_user_path(dir: &Path) -> Result<bool> {
     }
 }
 
+/// Switching a Python version means the *old* version's directory must leave
+/// PATH, or `python` keeps resolving to it (PATH is first-match-wins, and our
+/// installer only ever appends). `add_to_user_path` has no symmetric remove,
+/// so this is it. Pure + Windows-semantics (case-insensitive) so it's unit
+/// testable without touching the registry.
+///
+/// Removes every `;`-separated segment for which `should_remove` returns true.
+/// Returns `Some(new_path)` if anything was removed, `None` if unchanged.
+pub fn remove_path_dirs_matching<F>(current: &str, should_remove: F) -> Option<String>
+where
+    F: Fn(&str) -> bool,
+{
+    let kept: Vec<&str> = current
+        .split(';')
+        .filter(|seg| !seg.is_empty() && !should_remove(seg))
+        .collect();
+    let new_path = kept.join(";");
+    if new_path == current {
+        None
+    } else {
+        Some(new_path)
+    }
+}
+
+/// SAFETY-CRITICAL: only ever touches directories under Flint's own Python
+/// install root (`…\Programs\Python\python-*`). A user's own Python on PATH
+/// (system install, pyenv, conda, …) lives elsewhere and is never matched.
+///
+/// Removes all Flint-installed `python-*` dirs from the user PATH *except*
+/// the one for `keep_ver`, so switching versions leaves exactly one Flint
+/// Python on PATH. Windows-only; no-op error elsewhere.
+#[cfg(windows)]
+pub fn prune_user_python_paths(keep_ver: &str) -> Result<()> {
+    // The Flint Python install root, lowercased for case-insensitive matching.
+    let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let root = format!("{local}\\Programs\\Python\\python-").to_lowercase();
+    let keep_dir = format!("{local}\\Programs\\Python\\python-{keep_ver}").to_lowercase();
+
+    let current = read_user_path()?;
+    let new_path = remove_path_dirs_matching(&current, |seg| {
+        let low = seg.to_lowercase();
+        // A Flint python-* segment (the dir itself or its \Scripts) …
+        low.starts_with(&root)
+            // … that does NOT belong to the version we're keeping.
+            && !low.starts_with(&keep_dir)
+    });
+    if let Some(p) = new_path {
+        write_user_path(&p)?;
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn prune_user_python_paths(_keep_ver: &str) -> Result<()> {
+    Ok(())
+}
+
 /* ------------------------------------------------------------------ */
 /* Mirror / proxy configuration (Slice 4)                              */
 /* ------------------------------------------------------------------ */
@@ -444,5 +501,55 @@ mod tests {
     fn append_path_dir_handles_empty_current() {
         let result = append_path_dir("", "C:\\Python313");
         assert_eq!(result.as_deref(), Some("C:\\Python313"));
+    }
+
+    // ---- remove_path_dirs_matching (Python version-switch PATH cleanup) ----
+
+    /// Build a PATH that looks like a real one after installing two Python
+    /// versions via Flint, plus unrelated user dirs that must survive.
+    const PY_ROOT: &str = "C:\\Users\\me\\AppData\\Local\\Programs\\Python";
+
+    #[test]
+    fn remove_path_drops_old_python_keeps_target_and_others() {
+        let current = format!(
+            "C:\\Windows;{PY_ROOT}\\python-3.12.7;{PY_ROOT}\\python-3.12.7\\Scripts;\
+             {PY_ROOT}\\python-3.13.14;{PY_ROOT}\\python-3.13.14\\Scripts;C:\\Tools"
+        );
+        let keep = format!("{PY_ROOT}\\python-3.13.14").to_lowercase();
+        let root = format!("{PY_ROOT}\\python-").to_lowercase();
+        let out = remove_path_dirs_matching(&current, |seg| {
+            let low = seg.to_lowercase();
+            low.starts_with(&root) && !low.starts_with(&keep)
+        })
+        .expect("should change");
+        // old 3.12 dirs gone
+        assert!(!out.contains("python-3.12.7"), "old version not pruned: {out}");
+        // target 3.13 dirs + unrelated dirs survive
+        assert!(out.contains("python-3.13.14"));
+        assert!(out.contains("python-3.13.14\\Scripts"));
+        assert!(out.contains("C:\\Windows"));
+        assert!(out.contains("C:\\Tools"));
+    }
+
+    #[test]
+    fn remove_path_returns_none_when_nothing_matches() {
+        let current = "C:\\Windows;C:\\Tools";
+        let out = remove_path_dirs_matching(current, |seg| seg.contains("python-"));
+        assert_eq!(out, None, "no python dirs → no change");
+    }
+
+    #[test]
+    fn remove_path_is_case_insensitive_via_predicate() {
+        let current = format!("c:\\users\\me\\appdata\\local\\programs\\python\\PYTHON-3.12.7;C:\\Windows");
+        let root = format!("{PY_ROOT}\\python-").to_lowercase();
+        let out = remove_path_dirs_matching(&current, |seg| seg.to_lowercase().starts_with(&root));
+        assert_eq!(out.as_deref(), Some("C:\\Windows"));
+    }
+
+    #[test]
+    fn remove_path_drops_empty_segments() {
+        // trailing ; produces an empty segment that should be cleaned up.
+        let out = remove_path_dirs_matching("C:\\A;;C:\\B", |seg| seg == "C:\\A");
+        assert_eq!(out.as_deref(), Some("C:\\B"));
     }
 }
