@@ -1,6 +1,7 @@
 import { ChevronIcon, SpinnerIcon, StethoscopeIcon } from "./icons";
 import type { ParameterOption, ToolMeta, ToolStatus } from "./types";
 import { statusTextForTool } from "./format";
+import { useT } from "./i18n";
 
 type Props = {
   meta: ToolMeta;
@@ -31,6 +32,7 @@ export function ToolCard(props: Props) {
     onInstall,
     onDiagnose,
   } = props;
+  const t = useT();
   const installed = status?.installed ?? false;
   const isThisBusy = busyTool === meta.id;
   const isOtherBusy = busy && !isThisBusy;
@@ -58,7 +60,7 @@ export function ToolCard(props: Props) {
                   : "text-ink-faint")
             }
           >
-            {status ? statusTextForTool(installed, status.version) : "检测中…"}
+            {status ? statusTextForTool(installed, status.version, t) : t("tool.detecting")}
           </p>
         </div>
         <span
@@ -132,10 +134,10 @@ export function ToolCard(props: Props) {
           {isThisBusy ? (
             <>
               <SpinnerIcon className="h-3 w-3 animate-spin" />
-              安装中…
+              {t("common.installing")}
             </>
           ) : (
-            "安装"
+            t("tool.install")
           )}
         </button>
       ) : hasVersions ? (
@@ -173,10 +175,10 @@ export function ToolCard(props: Props) {
             {isThisBusy ? (
               <>
                 <SpinnerIcon className="h-3 w-3 animate-spin" />
-                升级中…
+                {t("tool.upgrading")}
               </>
             ) : (
-              "升级到最新"
+              t("tool.upgradeLatest")
             )}
           </button>
           <DiagnoseButton onClick={() => onDiagnose(meta.id)} busy={busy} />
@@ -194,7 +196,7 @@ export function ToolCard(props: Props) {
             disabled={busy}
             className="self-center text-[11px] text-ink-faint underline-offset-2 transition hover:text-ink-muted hover:underline disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isThisBusy ? "重装中…" : "重新安装"}
+            {isThisBusy ? t("tool.reinstalling") : t("tool.reinstall")}
           </button>
         </div>
       )}
@@ -210,13 +212,14 @@ function SwitchButton(props: {
   onClick: () => void;
 }) {
   const { isThisBusy, isOtherBusy, busy, sameVersion, onClick } = props;
+  const t = useT();
   const disabled = busy || sameVersion;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={sameVersion ? "已是当前版本" : undefined}
+      title={sameVersion ? t("tool.sameVersionTip") : undefined}
       className={
         "inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition " +
         (isThisBusy
@@ -229,12 +232,12 @@ function SwitchButton(props: {
       {isThisBusy ? (
         <>
           <SpinnerIcon className="h-3 w-3 animate-spin" />
-          切换中…
+          {t("common.switching")}
         </>
       ) : sameVersion ? (
-        "已是此版本"
+        t("tool.sameVersion")
       ) : (
-        "切换版本"
+        t("tool.switchVersion")
       )}
     </button>
   );
@@ -245,6 +248,7 @@ function DiagnoseButton(props: {
   busy: boolean;
   fullWidth?: boolean;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -256,7 +260,7 @@ function DiagnoseButton(props: {
       }
     >
       <StethoscopeIcon className="h-3.5 w-3.5" />
-      诊断
+      {t("common.diagnose")}
     </button>
   );
 }

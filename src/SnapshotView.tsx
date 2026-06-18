@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Snapshot } from "./types";
+import { useT } from "./i18n";
 
 type Props = {
   busy: boolean;
@@ -15,6 +16,7 @@ type Props = {
  */
 export function SnapshotView(props: Props) {
   const { busy, onExport, onImport } = props;
+  const t = useT();
   const [snap, setSnap] = useState<Snapshot | null>(null);
 
   useEffect(() => {
@@ -28,11 +30,9 @@ export function SnapshotView(props: Props) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-line bg-surface p-5">
-        <h2 className="text-[15px] font-semibold text-ink">环境快照与迁移</h2>
+        <h2 className="text-[15px] font-semibold text-ink">{t("snapshot.title")}</h2>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">
-          把当前这套环境导出成一个 <code className="rounded bg-surface-sunken px-1 py-0.5 text-[12px]">flint-snapshot.json</code>，
-          换机或重装后一键还原：自动安装缺失的工具、应用 npm/pip 镜像。
-          还原只补缺口——不会卸载已有工具，也不改你的 PATH。
+          {t("snapshot.intro")}
         </p>
         <div className="mt-4 flex gap-2.5">
           <button
@@ -41,7 +41,7 @@ export function SnapshotView(props: Props) {
             disabled={busy}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-4 text-[13px] font-medium text-white transition hover:bg-accent-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
-            导出快照
+            {t("snapshot.export")}
           </button>
           <button
             type="button"
@@ -49,31 +49,31 @@ export function SnapshotView(props: Props) {
             disabled={busy}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-4 text-[13px] font-medium text-ink transition hover:border-line-strong hover:bg-cream-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
-            从快照还原…
+            {t("snapshot.import")}
           </button>
         </div>
       </div>
 
       <div className="rounded-xl border border-line bg-surface p-5">
-        <h3 className="text-[13px] font-semibold text-ink">当前快照预览</h3>
+        <h3 className="text-[13px] font-semibold text-ink">{t("snapshot.preview")}</h3>
         {!snap ? (
-          <p className="mt-2 text-[13px] text-ink-faint">读取中…</p>
+          <p className="mt-2 text-[13px] text-ink-faint">{t("snapshot.reading")}</p>
         ) : (
           <div className="mt-3 space-y-3 text-[13px]">
             <div>
-              <span className="text-ink-muted">已安装工具（{installed.length}）：</span>
+              <span className="text-ink-muted">{t("snapshot.installedTools", { count: installed.length })}</span>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {installed.length === 0 ? (
-                  <span className="text-ink-faint">无</span>
+                  <span className="text-ink-faint">{t("snapshot.none")}</span>
                 ) : (
-                  installed.map((t) => (
+                  installed.map((tool) => (
                     <span
-                      key={t.id}
+                      key={tool.id}
                       className="inline-flex items-center gap-1 rounded-md bg-surface-sunken px-2 py-0.5 text-[12px] text-ink"
                     >
-                      {t.display_name}
-                      {t.version && (
-                        <span className="text-ink-faint">v{t.version}</span>
+                      {tool.display_name}
+                      {tool.version && (
+                        <span className="text-ink-faint">v{tool.version}</span>
                       )}
                     </span>
                   ))
@@ -81,11 +81,11 @@ export function SnapshotView(props: Props) {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-line pt-3">
-              <SnapRow label="npm 源" value={snap.npm_registry ?? "默认（官方）"} />
-              <SnapRow label="pip 源" value={snap.pip_registry ?? "默认（官方）"} />
+              <SnapRow label={t("snapshot.npm")} value={snap.npm_registry ?? t("snapshot.default")} />
+              <SnapRow label={t("snapshot.pip")} value={snap.pip_registry ?? t("snapshot.default")} />
               <SnapRow
-                label="WSL"
-                value={snap.wsl ? wslLabel(snap.wsl.state) : "未检测"}
+                label={t("snapshot.wsl")}
+                value={snap.wsl ? wslLabel(snap.wsl.state, t) : t("snapshot.notDetected")}
               />
             </div>
           </div>
@@ -106,15 +106,15 @@ function SnapRow(props: { label: string; value: string }) {
   );
 }
 
-function wslLabel(state: string): string {
+function wslLabel(state: string, t: ReturnType<typeof useT>): string {
   switch (state) {
     case "ready":
-      return "已就绪";
+      return t("snapshot.wslReady");
     case "enabled":
-      return "已启用（无发行版）";
+      return t("snapshot.wslEnabled");
     case "not-installed":
-      return "未安装";
+      return t("snapshot.wslNotInstalled");
     default:
-      return "未知";
+      return t("snapshot.wslUnknown");
   }
 }

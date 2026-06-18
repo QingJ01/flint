@@ -6,6 +6,7 @@ import {
   PIP_MIRRORS,
   isCN,
 } from "./constants";
+import { useT } from "./i18n";
 import type { MirrorStatus } from "./types";
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export function MirrorsView(props: Props) {
+  const t = useT();
   const { status, busy, onApplyNpm, onApplyPip, onAccelerate } = props;
   const npmCurrent = status?.npm ?? "";
   const pipCurrent = status?.pip ?? "";
@@ -27,9 +29,9 @@ export function MirrorsView(props: Props) {
     <div className="flex flex-col gap-4">
       <article className="flex items-center justify-between gap-4 rounded-xl border border-accent-soft bg-accent-soft/30 p-5">
         <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-medium text-ink">国内加速模式</h2>
+          <h2 className="text-[15px] font-medium text-ink">{t("mirrors.cnTitle")}</h2>
           <p className="mt-1 text-[12.5px] text-ink-muted">
-            一键切换 npm + pip 到国内镜像。GitHub 加速请见下方的 "gh-proxy" 链接。
+            {t("mirrors.cnDesc")}
           </p>
         </div>
         <button
@@ -39,13 +41,13 @@ export function MirrorsView(props: Props) {
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-medium text-white shadow-[0_1px_2px_rgba(204,120,92,0.4)] transition hover:bg-accent-deep disabled:opacity-50"
         >
           <RocketIcon className="h-3.5 w-3.5" />
-          {busy ? "切换中…" : "一键加速"}
+          {busy ? t("mirrors.accelerating") : t("mirrors.accelerate")}
         </button>
       </article>
 
       <MirrorCard
-        title="npm registry"
-        description="通过 ~/.npmrc 锁定。影响 npm install / npx 等所有 Node 包下载。"
+        title={t("mirrors.npmTitle")}
+        description={t("mirrors.npmDesc")}
         current={npmCurrent}
         inCN={npmInCN}
         options={NPM_MIRRORS}
@@ -54,8 +56,8 @@ export function MirrorsView(props: Props) {
       />
 
       <MirrorCard
-        title="pip index-url"
-        description="通过 pip.ini (Windows) / pip.conf (POSIX) 锁定。影响 pip install / uv 等所有 Python 包下载。"
+        title={t("mirrors.pipTitle")}
+        description={t("mirrors.pipDesc")}
         current={pipCurrent}
         inCN={pipInCN}
         options={PIP_MIRRORS}
@@ -64,9 +66,9 @@ export function MirrorsView(props: Props) {
       />
 
       <article className="rounded-xl border border-line bg-surface p-5">
-        <h3 className="text-[14px] font-medium text-ink">GitHub 克隆加速</h3>
+        <h3 className="text-[14px] font-medium text-ink">{t("mirrors.ghTitle")}</h3>
         <p className="mt-1 text-[12.5px] leading-relaxed text-ink-muted">
-          Flint 不直接修改 git config（避免污染你的提交身份）。手动加速两种方式：
+          {t("mirrors.ghDesc")}
         </p>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-[12.5px] text-ink-muted">
           <li>
@@ -75,7 +77,7 @@ export function MirrorsView(props: Props) {
             </code>
           </li>
           <li>
-            全局{" "}
+            {t("mirrors.ghGlobal")}{" "}
             <code className="rounded bg-surface-sunken px-1 py-0.5 font-mono text-[11px] text-ink">
               git config --global url."https://gh-proxy.com/https://github.com/".insteadOf "https://github.com/"
             </code>
@@ -95,6 +97,7 @@ function MirrorCard(props: {
   busy: boolean;
   onApply: (url: string) => void;
 }) {
+  const t = useT();
   const { title, description, current, inCN, options, busy, onApply } = props;
   return (
     <article className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(31,30,27,0.03)]">
@@ -104,18 +107,18 @@ function MirrorCard(props: {
             <h3 className="text-[14px] font-medium text-ink">{title}</h3>
             {inCN ? (
               <span className="rounded-full bg-success-soft px-2 py-0.5 text-[10.5px] font-medium text-success">
-                国内
+                {t("mirrors.badgeCN")}
               </span>
             ) : current ? (
               <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[10.5px] font-medium text-ink-muted">
-                官方
+                {t("mirrors.badgeOfficial")}
               </span>
             ) : null}
           </div>
           <p className="mt-1 text-[12.5px] text-ink-muted">{description}</p>
           {current && (
             <p className="mt-1.5 truncate font-mono text-[11.5px] text-ink-faint">
-              当前：{current}
+              {t("mirrors.current")}{current}
             </p>
           )}
         </div>
@@ -132,7 +135,7 @@ function MirrorCard(props: {
             disabled={busy}
           >
             <option value="" disabled>
-              切换到…
+              {t("mirrors.switchTo")}
             </option>
             {options.map((opt) => (
               <option key={opt.value} value={opt.value}>

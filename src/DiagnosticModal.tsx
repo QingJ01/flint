@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CloseIcon, SpinnerIcon } from "./icons";
+import { useT } from "./i18n";
 import type { DiagnosticReport, Finding, Severity } from "./types";
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
 
 export function DiagnosticModal(props: Props) {
   const { toolId, report, loading, onClose } = props;
+  const t = useT();
   const [keyResult, setKeyResult] = useState<Finding | null>(null);
   const [keyChecking, setKeyChecking] = useState(false);
   if (!toolId) return null;
@@ -25,7 +27,7 @@ export function DiagnosticModal(props: Props) {
     } catch (e) {
       setKeyResult({
         severity: "error",
-        message: `校验失败：${String(e)}`,
+        message: t("diag.keyFailed", { err: String(e) }),
         suggestion: null,
       });
     } finally {
@@ -53,17 +55,17 @@ export function DiagnosticModal(props: Props) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-[16px] font-semibold text-ink">
-              诊断报告 · {toolId}
+              {t("diag.title", { tool: toolId })}
             </h2>
             {summary && (
               <p className="mt-1 text-[12px] text-ink-muted">
-                {summary.ok} 项通过 ·{" "}
+                {t("diag.summaryPass", { n: summary.ok })} ·{" "}
                 <span className={summary.warn > 0 ? "text-warn" : ""}>
-                  {summary.warn} 警告
+                  {t("diag.summaryWarn", { n: summary.warn })}
                 </span>{" "}
                 ·{" "}
                 <span className={summary.err > 0 ? "text-danger" : ""}>
-                  {summary.err} 错误
+                  {t("diag.summaryError", { n: summary.err })}
                 </span>
               </p>
             )}
@@ -72,7 +74,7 @@ export function DiagnosticModal(props: Props) {
             type="button"
             onClick={onClose}
             className="rounded-md p-1 text-ink-faint transition hover:bg-surface-sunken hover:text-ink"
-            aria-label="关闭"
+            aria-label={t("diag.close")}
           >
             <CloseIcon className="h-4 w-4" />
           </button>
@@ -82,7 +84,7 @@ export function DiagnosticModal(props: Props) {
           <div className="mt-4 rounded-lg border border-line bg-surface-sunken/40 p-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[12px] text-ink-muted">
-                真实校验 API key 有效性（联网 · 免费）
+                {t("diag.keyPrompt")}
               </p>
               <button
                 type="button"
@@ -90,7 +92,7 @@ export function DiagnosticModal(props: Props) {
                 disabled={keyChecking}
                 className="rounded-md border border-line bg-surface px-2.5 py-1 text-[12px] text-ink transition hover:border-ink-muted disabled:opacity-50"
               >
-                {keyChecking ? "校验中…" : "验证 Key"}
+                {keyChecking ? t("diag.verifying") : t("diag.verifyKey")}
               </button>
             </div>
             {keyResult && (
@@ -118,11 +120,11 @@ export function DiagnosticModal(props: Props) {
           {loading ? (
             <div className="flex items-center gap-2 py-6 text-[13px] text-ink-muted">
               <SpinnerIcon className="h-3.5 w-3.5 animate-spin" />
-              正在检查…
+              {t("diag.checking")}
             </div>
           ) : report?.findings.length === 0 ? (
             <p className="py-6 text-center text-[13px] text-ink-faint">
-              该工具没有可用的诊断规则。
+              {t("diag.noRules")}
             </p>
           ) : (
             <ul className="space-y-2">

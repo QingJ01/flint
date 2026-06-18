@@ -1,11 +1,5 @@
 import type { WslStatus } from "./types";
-
-const stateLabel: Record<WslStatus["state"], string> = {
-  "not-installed": "未启用",
-  enabled: "已启用（无发行版）",
-  ready: "就绪",
-  unknown: "状态未知",
-};
+import { useT } from "./i18n";
 
 const stateDot: Record<WslStatus["state"], string> = {
   "not-installed": "bg-danger",
@@ -22,9 +16,23 @@ type Props = {
 };
 
 export function WslView(props: Props) {
+  const t = useT();
   const { status, busy, onEnable, onInstallDevTools } = props;
   const step1Done = status?.state === "enabled" || status?.state === "ready";
   const step2Done = status?.state === "ready";
+
+  const stateLabel = (state: WslStatus["state"]): string => {
+    switch (state) {
+      case "not-installed":
+        return t("wsl.stateNotInstalled");
+      case "enabled":
+        return t("wsl.stateEnabled");
+      case "ready":
+        return t("wsl.stateReady");
+      default:
+        return t("wsl.stateUnknown");
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,12 +51,15 @@ export function WslView(props: Props) {
             </div>
             <p className="mt-1 text-[12.5px] text-ink-muted">
               {status
-                ? `当前状态：${stateLabel[status.state]}${status.default_distro ? ` · 默认发行版：${status.default_distro}` : ""}`
-                : "检测中…"}
+                ? t("wsl.currentState", { state: stateLabel(status.state) }) +
+                  (status.default_distro
+                    ? t("wsl.defaultDistro", { distro: status.default_distro })
+                    : "")
+                : t("wsl.detecting")}
             </p>
             {status?.distros && status.distros.length > 0 && (
               <p className="mt-1 font-mono text-[11.5px] text-ink-faint">
-                已装发行版：{status.distros.join(", ")}
+                {t("wsl.installedDistros", { distros: status.distros.join(", ") })}
               </p>
             )}
             {status?.kernel_version && (
@@ -70,15 +81,10 @@ export function WslView(props: Props) {
           <StepBadge n={1} done={step1Done} />
           <div className="min-w-0 flex-1">
             <h3 className="text-[14px] font-medium text-ink">
-              启用 WSL 并安装 Ubuntu
+              {t("wsl.step1Title")}
             </h3>
             <p className="mt-1 text-[12.5px] leading-relaxed text-ink-muted">
-              首次启用需要一次性管理员权限（Windows 会弹 UAC 对话框）。
-              操作完成后新开 PowerShell 运行{" "}
-              <code className="rounded bg-surface-sunken px-1 py-0.5 font-mono text-[11.5px] text-ink">
-                wsl --status
-              </code>{" "}
-              验证。
+              {t("wsl.step1Desc")}
             </p>
             <button
               type="button"
@@ -93,7 +99,7 @@ export function WslView(props: Props) {
                     : "bg-ink text-white hover:bg-ink/90 shadow-[0_1px_2px_rgba(31,30,27,0.18)]")
               }
             >
-              {step1Done ? "✓ 已完成" : "启用 WSL"}
+              {step1Done ? t("wsl.done") : t("wsl.enable")}
             </button>
           </div>
         </div>
@@ -104,11 +110,10 @@ export function WslView(props: Props) {
           <StepBadge n={2} done={step2Done} />
           <div className="min-w-0 flex-1">
             <h3 className="text-[14px] font-medium text-ink">
-              在 Ubuntu 里装开发环境
+              {t("wsl.step2Title")}
             </h3>
             <p className="mt-1 text-[12.5px] leading-relaxed text-ink-muted">
-              在 WSL 的 Ubuntu 发行版中以 root 身份安装 Git、Node LTS、Bun、Python、uv、Claude Code。
-              约需 3-5 分钟。
+              {t("wsl.step2Desc")}
             </p>
             <button
               type="button"
@@ -125,22 +130,14 @@ export function WslView(props: Props) {
                       : "bg-ink/20 text-white/60 cursor-not-allowed")
               }
             >
-              {step2Done ? "✓ 已就绪" : "安装 WSL 开发环境"}
+              {step2Done ? t("wsl.ready") : t("wsl.installDev")}
             </button>
           </div>
         </div>
       </article>
 
       <p className="px-1 text-[11.5px] text-ink-faint">
-        安装完成后，在 PowerShell 运行{" "}
-        <code className="rounded bg-surface px-1 py-0.5 font-mono text-[11px] text-ink-muted">
-          wsl
-        </code>{" "}
-        进入 Ubuntu；或{" "}
-        <code className="rounded bg-surface px-1 py-0.5 font-mono text-[11px] text-ink-muted">
-          wsl -d Ubuntu code .
-        </code>{" "}
-        在 WSL 中直接打开 VS Code（需 Windows 端已装 VS Code）。
+        {t("wsl.footer1")}
       </p>
     </div>
   );

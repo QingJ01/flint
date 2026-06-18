@@ -1,4 +1,5 @@
 import { SpinnerIcon } from "./icons";
+import { useT } from "./i18n";
 import type { PresetMeta } from "./types";
 
 type PresetProgress = {
@@ -19,11 +20,12 @@ type Props = {
 
 export function PresetsView(props: Props) {
   const { presets, onApply, busy, presetProgress, showOnboarding } = props;
+  const t = useT();
 
   if (presets.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-line bg-surface-sunken p-8 text-center">
-        <p className="text-[13px] text-ink-muted">暂无可用预设。</p>
+        <p className="text-[13px] text-ink-muted">{t("presets.empty")}</p>
       </div>
     );
   }
@@ -33,13 +35,10 @@ export function PresetsView(props: Props) {
       {showOnboarding && (
         <div className="rounded-xl border border-accent-soft/50 bg-accent-soft/15 p-4">
           <h2 className="text-[15px] font-semibold text-ink">
-            👋 欢迎！从零到能用 AI 写代码，选一个组合就够了
+            {t("presets.welcomeTitle")}
           </h2>
           <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">
-            不确定装什么？点下面任意一个「<span className="font-medium text-ink">应用预设</span>」，
-            Flint 会自动把整套工具一次装好——无需逐个挑选。
-            拿不准就选 <span className="font-medium text-ink">Vibecoder 全家桶</span>。
-            想自己挑？切到上方「仪表盘」逐个安装。
+            {t("presets.welcomeBody1")}<span className="font-medium text-ink">{t("presets.welcomeApply")}</span>{t("presets.welcomeBody2")}<span className="font-medium text-ink">{t("presets.welcomeBundle")}</span>{t("presets.welcomeBody3")}
           </p>
         </div>
       )}
@@ -66,7 +65,7 @@ export function PresetsView(props: Props) {
               <span className="text-[11px] text-ink-faint">
                 {isThis
                   ? `${presetProgress!.index + 1}/${presetProgress!.total} · ${presetProgress!.currentTool}`
-                  : "一键组合安装"}
+                  : t("presets.oneClick")}
               </span>
               <button
                 type="button"
@@ -84,10 +83,10 @@ export function PresetsView(props: Props) {
                 {isThis ? (
                   <>
                     <SpinnerIcon className="h-3 w-3 animate-spin" />
-                    安装中…
+                    {t("common.installing")}
                   </>
                 ) : (
-                  "应用预设"
+                  t("presets.apply")
                 )}
               </button>
             </div>

@@ -1,8 +1,6 @@
 import { ToolCard } from "./ToolCard";
-import {
-  categoryLabel,
-  categoryOrder,
-} from "./constants";
+import { useT } from "./i18n";
+import { categoryOrder } from "./constants";
 import type {
   ParameterOption,
   ToolMeta,
@@ -39,6 +37,7 @@ export function DashboardView(props: Props) {
     onDiagnose,
   } = props;
 
+  const t = useT();
   const statusById = new Map(tools.map((t) => [t.id, t]));
 
   return (
@@ -53,10 +52,13 @@ export function DashboardView(props: Props) {
           <section key={category}>
             <div className="mb-3 flex items-baseline justify-between border-b border-line pb-2">
               <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
-                {categoryLabel[category]}
+                {category === "runtime" ? t("cat.runtime") : t("cat.ai")}
               </h2>
               <span className="text-[11px] tabular-nums text-ink-faint">
-                {installedCount} / {sectionMetas.length} 已就绪
+                {t("dash.sectionReady", {
+                  installed: installedCount,
+                  total: sectionMetas.length,
+                })}
               </span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

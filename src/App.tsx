@@ -205,9 +205,14 @@ export default function App() {
       ? Object.values(params[id])[0]
       : undefined;
     setBusy(true);
+    const name = tool?.display_name ?? id;
     setLogs(
       switching
-        ? [`正在切换 ${tool?.display_name ?? id}${targetVer ? ` 到 ${targetVer}` : ""}（将覆盖当前安装）`]
+        ? [
+            targetVer
+              ? t("log.switching", { name, ver: targetVer })
+              : t("log.switchingNoVer", { name }),
+          ]
         : [],
     );
     setBusyTool(id);
@@ -219,9 +224,15 @@ export default function App() {
     setBusyTool(null);
     if (res.ok) {
       const ver = res.version ? ` · v${res.version}` : "";
-      setLogs((cur) => [...cur, `✓ ${switching ? "切换成功" : "安装成功"}${ver}`]);
+      setLogs((cur) => [
+        ...cur,
+        switching ? t("log.switchOk", { ver }) : t("log.installOk", { ver }),
+      ]);
     } else {
-      setLogs((cur) => [...cur, `✗ ${res.error ?? (switching ? "切换失败" : "安装失败")}`]);
+      setLogs((cur) => [
+        ...cur,
+        res.error ?? (switching ? t("log.switchFail") : t("log.installFail")),
+      ]);
     }
     void refresh();
   }
@@ -230,16 +241,16 @@ export default function App() {
   async function exportSnapshot() {
     if (busy) return;
     const path = await save({
-      title: "导出环境快照",
+      title: t("dialog.exportTitle"),
       defaultPath: "flint-snapshot.json",
-      filters: [{ name: "Flint 快照", extensions: ["json"] }],
+      filters: [{ name: t("dialog.snapshotFilter"), extensions: ["json"] }],
     });
     if (!path) return; // user cancelled
     try {
       await invoke("export_snapshot", { path });
-      setLogs((cur) => [...cur, `✓ 已导出快照：${path}`]);
+      setLogs((cur) => [...cur, t("log.exportOk", { path })]);
     } catch (e) {
-      setLogs((cur) => [...cur, `✗ 导出失败：${String(e)}`]);
+      setLogs((cur) => [...cur, t("log.exportFail", { err: String(e) })]);
     }
   }
 
@@ -247,19 +258,19 @@ export default function App() {
   async function importSnapshot() {
     if (busy) return;
     const selected = await open({
-      title: "选择要还原的快照",
+      title: t("dialog.importTitle"),
       multiple: false,
-      filters: [{ name: "Flint 快照", extensions: ["json"] }],
+      filters: [{ name: t("dialog.snapshotFilter"), extensions: ["json"] }],
     });
     if (!selected || typeof selected !== "string") return; // cancelled
     setBusy(true);
-    setLogs([`从快照还原：${selected}`]);
+    setLogs([t("log.restoreFrom", { path: selected })]);
     const res = await runStreaming("import_snapshot", { path: selected });
     setBusy(false);
     if (res.ok) {
-      setLogs((cur) => [...cur, "✓ 还原完成"]);
+      setLogs((cur) => [...cur, t("log.restoreOk")]);
     } else {
-      setLogs((cur) => [...cur, `✗ ${res.error ?? "还原过程中有工具失败"}`]);
+      setLogs((cur) => [...cur, res.error ?? t("log.restoreFail")]);
     }
     void refresh();
   }
@@ -273,7 +284,7 @@ export default function App() {
     } catch (e) {
       setLogs((cur) => [
         ...cur,
-        `[error] 无法加载预设 ${presetId}：${String(e)}`,
+        t("log.presetLoadFail", { id: presetId, err: String(e) }),
       ]);
       return;
     }
@@ -307,7 +318,10 @@ export default function App() {
         ]);
       } else {
         failed.push(id);
-        setLogs((cur) => [...cur, `✗ ${id}：${res.error ?? "失败"}`]);
+        setLogs((cur) => [
+          ...cur,
+          t("log.presetItemFail", { id, err: res.error ?? t("log.fail") }),
+        ]);
       }
     }
     void skipped; // (skipped detection happens on next refresh)
@@ -317,7 +331,7 @@ export default function App() {
     setLogs((cur) => [
       ...cur,
       ``,
-      `[preset] 总结：✓ ${succeeded.length} · ✗ ${failed.length}`,
+      t("log.presetSummary", { ok: succeeded.length, fail: failed.length }),
     ]);
     setPresetProgress(null);
     void refresh();
@@ -332,7 +346,7 @@ export default function App() {
     const res = await runStreaming("wsl_enable", {});
     setBusyTool(null);
     setWslBusy(false);
-    if (!res.ok) setLogs((cur) => [...cur, `✗ ${res.error ?? "WSL 启用失败"}`]);
+    if (!res.ok) setLogs((cur) => [...cur, res.error ?? t("log.wslEnableFail")]);
     void refresh();
   }
 
@@ -345,7 +359,7 @@ export default function App() {
     setBusyTool(null);
     setWslBusy(false);
     if (!res.ok)
-      setLogs((cur) => [...cur, `✗ ${res.error ?? "WSL 内开发环境安装失败"}`]);
+      setLogs((cur) => [...cur, res.error ?? t("log.wslDevFail")]);
     void refresh();
   }
 
@@ -359,11 +373,11 @@ export default function App() {
       });
       setLogs((cur) => [
         ...cur,
-        changed ? `✓ npm registry 已写入：${url}` : `[skip] npm registry 已是该值`,
+        changed ? t("log.npmOk", { url }) : t("log.npmSkip"),
       ]);
       void refresh();
     } catch (e) {
-      setLogs((cur) => [...cur, `✗ npm mirror 失败：${String(e)}`]);
+      setLogs((cur) => [...cur, t("log.npmFail", { err: String(e) })]);
     } finally {
       setMirrorBusy(false);
     }
@@ -378,11 +392,11 @@ export default function App() {
       });
       setLogs((cur) => [
         ...cur,
-        changed ? `✓ pip index-url 已写入：${url}` : `[skip] pip index-url 已是该值`,
+        changed ? t("log.pipOk", { url }) : t("log.pipSkip"),
       ]);
       void refresh();
     } catch (e) {
-      setLogs((cur) => [...cur, `✗ pip mirror 失败：${String(e)}`]);
+      setLogs((cur) => [...cur, t("log.pipFail", { err: String(e) })]);
     } finally {
       setMirrorBusy(false);
     }
@@ -398,12 +412,12 @@ export default function App() {
       for (const [kind, changed] of res) {
         setLogs((cur) => [
           ...cur,
-          changed ? `✓ ${kind} 已切到国内源` : `[skip] ${kind} 已是国内源`,
+          changed ? t("log.cnOk", { kind }) : t("log.cnSkip", { kind }),
         ]);
       }
       void refresh();
     } catch (e) {
-      setLogs((cur) => [...cur, `✗ 国内加速失败：${String(e)}`]);
+      setLogs((cur) => [...cur, t("log.cnFail", { err: String(e) })]);
     } finally {
       setMirrorBusy(false);
     }
@@ -423,7 +437,7 @@ export default function App() {
         findings: [
           {
             severity: "error",
-            message: `诊断失败：${String(e)}`,
+            message: t("log.diagFail", { err: String(e) }),
             suggestion: null,
           },
         ],
@@ -558,7 +572,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-log-faint" />
                 <h2 className="text-[12px] font-semibold tracking-wide text-log-text">
-                  安装日志
+                  {t("log.title")}
                 </h2>
               </div>
               <span className="font-mono text-[11px] tabular-nums text-log-faint">
@@ -569,14 +583,14 @@ export default function App() {
                       ? `${busyTool} · ${pct}%`
                       : `${pct}%`
                     : logs.length > 0
-                      ? `${logs.length} 行`
-                      : "空闲"}
+                      ? t("log.lines", { n: logs.length })
+                      : t("log.idle")}
               </span>
             </div>
             <pre className="log-scroll h-[560px] overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[11.5px] leading-[1.65]">
               {logs.length === 0 ? (
                 <span className="text-log-faint">
-                  暂无日志。点击任意工具卡的「安装」开始。
+                  {t("log.empty")}
                 </span>
               ) : (
                 logs.map((line, i) => (
@@ -591,7 +605,7 @@ export default function App() {
         </section>
 
         <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-[11px] text-ink-faint">
-          <span>Flint · 一键点燃开发环境</span>
+          <span>{t("footer.brand")}</span>
           <span className="font-mono">v0.5.0</span>
         </footer>
       </div>

@@ -15,7 +15,8 @@ export function logClass(line: string): string {
 export function statusTextForTool(
   installed: boolean,
   version: string | null,
+  t: (key: "tool.notInstalled" | "tool.installed") => string,
 ): string {
-  if (!installed) return "未安装";
-  return version ? `v${version}` : "已安装";
+  if (!installed) return t("tool.notInstalled");
+  return version ? `v${version}` : t("tool.installed");
 }
