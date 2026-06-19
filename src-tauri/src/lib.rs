@@ -3,6 +3,7 @@ pub mod detector;
 pub mod diagnose;
 pub mod error;
 pub mod executor;
+pub mod i18n;
 pub mod ipc;
 pub mod preset;
 pub mod recipe;
@@ -34,7 +35,8 @@ pub fn run() {
             ipc::list_tool_versions,
             ipc::current_snapshot,
             ipc::export_snapshot,
-            ipc::import_snapshot
+            ipc::import_snapshot,
+            ipc::set_locale
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

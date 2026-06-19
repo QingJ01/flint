@@ -2,12 +2,20 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { zh, type MessageKey } from "./zh";
 import { en } from "./en";
+
+/** Push the locale to the backend so Rust-produced strings (diagnostics,
+ *  install logs) match the UI language. Best-effort — ignore failures. */
+function syncBackendLocale(locale: Locale) {
+  void invoke("set_locale", { locale }).catch(() => {});
+}
 
 export type Locale = "zh" | "en";
 
@@ -42,9 +50,16 @@ function interpolate(template: string, vars?: Record<string, string | number>): 
 export function I18nProvider(props: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
 
+  // Sync the initial locale to the backend once on mount.
+  useEffect(() => {
+    syncBackendLocale(locale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
     localStorage.setItem(STORAGE_KEY, l);
+    syncBackendLocale(l);
   }, []);
 
   const t = useCallback<TFn>(

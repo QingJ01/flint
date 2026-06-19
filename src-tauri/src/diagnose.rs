@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::i18n::tr;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::process::Command;
@@ -138,17 +139,26 @@ fn on_path_finding(cmd: &str, label: &str) -> Finding {
     if which::which(cmd).is_ok() {
         return Finding {
             severity: Severity::Ok,
-            message: format!("{label} 在 PATH 中"),
+            message: tr(
+                &format!("{label} 在 PATH 中"),
+                &format!("{label} is on PATH"),
+            ),
             suggestion: None,
         };
     }
     Finding {
         severity: Severity::Error,
-        message: format!("{label} 不在 PATH 中"),
+        message: tr(
+            &format!("{label} 不在 PATH 中"),
+            &format!("{label} is not on PATH"),
+        ),
         suggestion: Some(if cfg!(windows) {
-            "重开终端后再试；如仍不在 PATH，检查 Flint 安装日志里的 `[skip]` 行".into()
+            tr(
+                "重开终端后再试；如仍不在 PATH，检查 Flint 安装日志里的 `[skip]` 行",
+                "Reopen your terminal and retry; if still missing, check the `[skip]` lines in Flint's install log",
+            )
         } else {
-            "新开终端后再试".into()
+            tr("新开终端后再试", "Open a new terminal and retry")
         }),
     }
 }
@@ -160,20 +170,30 @@ fn check_anthropic_api_key() -> Finding {
     match key {
         Some(k) if k.starts_with("sk-") && k.len() >= 20 => Finding {
             severity: Severity::Ok,
-            message: "ANTHROPIC_API_KEY 已设置".into(),
+            message: tr("ANTHROPIC_API_KEY 已设置", "ANTHROPIC_API_KEY is set"),
             suggestion: None,
         },
         Some(_) => Finding {
             severity: Severity::Warn,
-            message: "API Key 格式可疑（不是 sk-...）".into(),
-            suggestion: Some("到 console.anthropic.com 重新生成 key".into()),
+            message: tr(
+                "API Key 格式可疑（不是 sk-...）",
+                "API key looks suspicious (not sk-...)",
+            ),
+            suggestion: Some(tr(
+                "到 console.anthropic.com 重新生成 key",
+                "Regenerate the key at console.anthropic.com",
+            )),
         },
         None => Finding {
             severity: Severity::Warn,
-            message: "未检测到 ANTHROPIC_API_KEY / CLAUDE_API_KEY".into(),
-            suggestion: Some(
-                "claude 首次运行会引导你登录；或在 shell 里 export ANTHROPIC_API_KEY=...".into(),
+            message: tr(
+                "未检测到 ANTHROPIC_API_KEY / CLAUDE_API_KEY",
+                "ANTHROPIC_API_KEY / CLAUDE_API_KEY not detected",
             ),
+            suggestion: Some(tr(
+                "claude 首次运行会引导你登录；或在 shell 里 export ANTHROPIC_API_KEY=...",
+                "claude will prompt you to log in on first run; or export ANTHROPIC_API_KEY=... in your shell",
+            )),
         },
     }
 }
@@ -182,7 +202,10 @@ async fn check_claude_doctor() -> Finding {
     if which::which("claude").is_err() {
         return Finding {
             severity: Severity::Warn,
-            message: "`claude doctor` 跳过（claude 不在 PATH）".into(),
+            message: tr(
+                "`claude doctor` 跳过（claude 不在 PATH）",
+                "`claude doctor` skipped (claude not on PATH)",
+            ),
             suggestion: None,
         };
     }
@@ -193,7 +216,10 @@ async fn check_opencode_doctor() -> Finding {
     if which::which("opencode").is_err() {
         return Finding {
             severity: Severity::Warn,
-            message: "`opencode` 不在 PATH，跳过".into(),
+            message: tr(
+                "`opencode` 不在 PATH，跳过",
+                "`opencode` not on PATH, skipped",
+            ),
             suggestion: None,
         };
     }
@@ -211,7 +237,7 @@ async fn run_doctor(
     if argv.is_empty() {
         return Finding {
             severity: Severity::Error,
-            message: "空命令".into(),
+            message: tr("空命令", "empty command"),
             suggestion: None,
         };
     }
@@ -231,7 +257,10 @@ async fn run_doctor(
     let Ok(child) = cmd.spawn() else {
         return Finding {
             severity: Severity::Error,
-            message: format!("{label} 启动失败"),
+            message: tr(
+                &format!("{label} 启动失败"),
+                &format!("{label} failed to start"),
+            ),
             suggestion: None,
         };
     };
@@ -246,7 +275,10 @@ async fn run_doctor(
             let stdout = String::from_utf8_lossy(&out.stdout);
             Finding {
                 severity: Severity::Ok,
-                message: format!("{label} 退出码 0"),
+                message: tr(
+                    &format!("{label} 退出码 0"),
+                    &format!("{label} exited 0"),
+                ),
                 // 把首行输出（版本/健康摘要）当证据展示，便于排查。
                 suggestion: stdout.lines().next().map(|s| s.to_string()),
             }
@@ -256,7 +288,10 @@ async fn run_doctor(
             let stdout = String::from_utf8_lossy(&out.stdout);
             Finding {
                 severity: Severity::Error,
-                message: format!("{label} 退出码 {:?}", out.status.code()),
+                message: tr(
+                    &format!("{label} 退出码 {:?}", out.status.code()),
+                    &format!("{label} exited {:?}", out.status.code()),
+                ),
                 suggestion: Some(
                     stderr
                         .lines()
@@ -269,12 +304,18 @@ async fn run_doctor(
         }
         Ok(Err(_)) => Finding {
             severity: Severity::Error,
-            message: format!("{label} 启动失败"),
+            message: tr(
+                &format!("{label} 启动失败"),
+                &format!("{label} failed to start"),
+            ),
             suggestion: None,
         },
         Err(_) => Finding {
             severity: Severity::Warn,
-            message: format!("{label} 超时（{timeout_sec}s），已中止"),
+            message: tr(
+                &format!("{label} 超时（{timeout_sec}s），已中止"),
+                &format!("{label} timed out ({timeout_sec}s), aborted"),
+            ),
             suggestion: None,
         },
     }
@@ -290,20 +331,32 @@ async fn check_reachability(label: &str, url: &str) -> Finding {
     let Ok(client) = client else {
         return Finding {
             severity: Severity::Warn,
-            message: format!("{label} 探测器构建失败"),
+            message: tr(
+                &format!("{label} 探测器构建失败"),
+                &format!("{label} probe failed to build"),
+            ),
             suggestion: None,
         };
     };
     match client.get(url).send().await {
         Ok(resp) => Finding {
             severity: Severity::Ok,
-            message: format!("{label} 可达（HTTP {}）", resp.status().as_u16()),
+            message: tr(
+                &format!("{label} 可达（HTTP {}）", resp.status().as_u16()),
+                &format!("{label} reachable (HTTP {})", resp.status().as_u16()),
+            ),
             suggestion: None,
         },
         Err(e) => Finding {
             severity: Severity::Warn,
-            message: format!("{label} 不可达：{e}"),
-            suggestion: Some("检查网络 / 代理设置".into()),
+            message: tr(
+                &format!("{label} 不可达：{e}"),
+                &format!("{label} unreachable: {e}"),
+            ),
+            suggestion: Some(tr(
+                "检查网络 / 代理设置",
+                "Check your network / proxy settings",
+            )),
         },
     }
 }
@@ -312,13 +365,22 @@ fn check_node_for_codex() -> Finding {
     match which::which("node") {
         Ok(_) => Finding {
             severity: Severity::Ok,
-            message: "Node.js 已就绪（Codex 依赖）".into(),
+            message: tr(
+                "Node.js 已就绪（Codex 依赖）",
+                "Node.js ready (Codex dependency)",
+            ),
             suggestion: None,
         },
         Err(_) => Finding {
             severity: Severity::Error,
-            message: "Codex 依赖 Node.js，但 node 不在 PATH".into(),
-            suggestion: Some("先在仪表盘装 Node.js，再回来装 Codex".into()),
+            message: tr(
+                "Codex 依赖 Node.js，但 node 不在 PATH",
+                "Codex needs Node.js, but node is not on PATH",
+            ),
+            suggestion: Some(tr(
+                "先在仪表盘装 Node.js，再回来装 Codex",
+                "Install Node.js from the dashboard first, then install Codex",
+            )),
         },
     }
 }
@@ -327,7 +389,10 @@ fn check_fnm_integration() -> Finding {
     if which::which("fnm").is_err() {
         return Finding {
             severity: Severity::Warn,
-            message: "未检测到 fnm（Node 可能由其它方式安装）".into(),
+            message: tr(
+                "未检测到 fnm（Node 可能由其它方式安装）",
+                "fnm not detected (Node may be installed another way)",
+            ),
             suggestion: None,
         };
     }
@@ -340,14 +405,23 @@ fn check_fnm_integration() -> Finding {
         if text.contains("fnm env") {
             Finding {
                 severity: Severity::Ok,
-                message: "PowerShell profile 已含 fnm 集成".into(),
+                message: tr(
+                    "PowerShell profile 已含 fnm 集成",
+                    "PowerShell profile already has fnm integration",
+                ),
                 suggestion: None,
             }
         } else {
             Finding {
                 severity: Severity::Warn,
-                message: "fnm 已装但 PowerShell profile 未集成".into(),
-                suggestion: Some("在仪表盘重新点一次 Node 安装以写入集成".into()),
+                message: tr(
+                    "fnm 已装但 PowerShell profile 未集成",
+                    "fnm installed but PowerShell profile not integrated",
+                ),
+                suggestion: Some(tr(
+                    "在仪表盘重新点一次 Node 安装以写入集成",
+                    "Re-run Node install from the dashboard to write the integration",
+                )),
             }
         }
     }
@@ -355,7 +429,10 @@ fn check_fnm_integration() -> Finding {
     {
         Finding {
             severity: Severity::Warn,
-            message: "fnm shell 集成检查仅在 Windows 实现".into(),
+            message: tr(
+                "fnm shell 集成检查仅在 Windows 实现",
+                "fnm shell integration check is Windows-only",
+            ),
             suggestion: None,
         }
     }
@@ -365,7 +442,10 @@ fn check_pip_installed() -> Finding {
     if which::which("python").is_err() && which::which("python3").is_err() {
         return Finding {
             severity: Severity::Error,
-            message: "Python 不在 PATH，跳过 pip 检查".into(),
+            message: tr(
+                "Python 不在 PATH，跳过 pip 检查",
+                "Python not on PATH, skipping pip check",
+            ),
             suggestion: None,
         };
     }
@@ -377,13 +457,16 @@ fn check_pip_installed() -> Finding {
     match Command::new(py).args(["-m", "pip", "--version"]).output() {
         Ok(o) if o.status.success() => Finding {
             severity: Severity::Ok,
-            message: "pip 可用".into(),
+            message: tr("pip 可用", "pip is available"),
             suggestion: None,
         },
         _ => Finding {
             severity: Severity::Warn,
-            message: "pip 不可用".into(),
-            suggestion: Some("在仪表盘重新装 Python（含 get-pip 步骤）".into()),
+            message: tr("pip 不可用", "pip is unavailable"),
+            suggestion: Some(tr(
+                "在仪表盘重新装 Python（含 get-pip 步骤）",
+                "Reinstall Python from the dashboard (includes the get-pip step)",
+            )),
         },
     }
 }
@@ -392,7 +475,7 @@ fn check_git_user_configured() -> Finding {
     if which::which("git").is_err() {
         return Finding {
             severity: Severity::Error,
-            message: "git 不在 PATH".into(),
+            message: tr("git 不在 PATH", "git is not on PATH"),
             suggestion: None,
         };
     }
@@ -411,7 +494,10 @@ fn check_git_user_configured() -> Finding {
     if name_ok && email_ok {
         Finding {
             severity: Severity::Ok,
-            message: "git user.name / user.email 已配置".into(),
+            message: tr(
+                "git user.name / user.email 已配置",
+                "git user.name / user.email configured",
+            ),
             suggestion: None,
         }
     } else {
@@ -424,8 +510,14 @@ fn check_git_user_configured() -> Finding {
         }
         Finding {
             severity: Severity::Warn,
-            message: format!("git 缺少配置：{}", missing.join(", ")),
-            suggestion: Some("运行 `git config --global user.name \"Your Name\"` 和 `git config --global user.email you@example.com`".into()),
+            message: tr(
+                &format!("git 缺少配置：{}", missing.join(", ")),
+                &format!("git missing config: {}", missing.join(", ")),
+            ),
+            suggestion: Some(tr(
+                "运行 `git config --global user.name \"Your Name\"` 和 `git config --global user.email you@example.com`",
+                "Run `git config --global user.name \"Your Name\"` and `git config --global user.email you@example.com`",
+            )),
         }
     }
 }
@@ -434,20 +526,23 @@ fn check_gh_auth() -> Finding {
     if which::which("gh").is_err() {
         return Finding {
             severity: Severity::Error,
-            message: "gh 不在 PATH".into(),
+            message: tr("gh 不在 PATH", "gh is not on PATH"),
             suggestion: None,
         };
     }
     match Command::new("gh").args(["auth", "status"]).output() {
         Ok(o) if o.status.success() => Finding {
             severity: Severity::Ok,
-            message: "gh 已登录".into(),
+            message: tr("gh 已登录", "gh is logged in"),
             suggestion: None,
         },
         _ => Finding {
             severity: Severity::Warn,
-            message: "gh 未登录".into(),
-            suggestion: Some("运行 `gh auth login` 完成 GitHub 认证".into()),
+            message: tr("gh 未登录", "gh is not logged in"),
+            suggestion: Some(tr(
+                "运行 `gh auth login` 完成 GitHub 认证",
+                "Run `gh auth login` to authenticate with GitHub",
+            )),
         },
     }
 }
@@ -464,37 +559,65 @@ pub fn classify_key_check(has_key: bool, http_status: Option<u16>) -> Finding {
     if !has_key {
         return Finding {
             severity: Severity::Warn,
-            message: "未检测到 ANTHROPIC_API_KEY / CLAUDE_API_KEY".into(),
-            suggestion: Some(
-                "在 shell 里 export ANTHROPIC_API_KEY=...（console.anthropic.com 生成）".into(),
+            message: tr(
+                "未检测到 ANTHROPIC_API_KEY / CLAUDE_API_KEY",
+                "ANTHROPIC_API_KEY / CLAUDE_API_KEY not detected",
             ),
+            suggestion: Some(tr(
+                "在 shell 里 export ANTHROPIC_API_KEY=...（console.anthropic.com 生成）",
+                "export ANTHROPIC_API_KEY=... in your shell (generate at console.anthropic.com)",
+            )),
         };
     }
     match http_status {
         Some(200) => Finding {
             severity: Severity::Ok,
-            message: "API key 有效（GET /v1/models 返回 200）".into(),
+            message: tr(
+                "API key 有效（GET /v1/models 返回 200）",
+                "API key valid (GET /v1/models returned 200)",
+            ),
             suggestion: None,
         },
         Some(401) => Finding {
             severity: Severity::Error,
-            message: "API key 无效或已失效（401）".into(),
-            suggestion: Some("到 console.anthropic.com 重新生成 key".into()),
+            message: tr(
+                "API key 无效或已失效（401）",
+                "API key invalid or revoked (401)",
+            ),
+            suggestion: Some(tr(
+                "到 console.anthropic.com 重新生成 key",
+                "Regenerate the key at console.anthropic.com",
+            )),
         },
         Some(403) => Finding {
             severity: Severity::Warn,
-            message: "API key 认证通过但权限不足（403）".into(),
-            suggestion: Some("检查 key 所属组织 / 权限范围".into()),
+            message: tr(
+                "API key 认证通过但权限不足（403）",
+                "API key authenticated but lacks permission (403)",
+            ),
+            suggestion: Some(tr(
+                "检查 key 所属组织 / 权限范围",
+                "Check the key's organization / permission scope",
+            )),
         },
         Some(code) => Finding {
             severity: Severity::Warn,
-            message: format!("Anthropic 返回意外状态码：HTTP {code}"),
+            message: tr(
+                &format!("Anthropic 返回意外状态码：HTTP {code}"),
+                &format!("Anthropic returned an unexpected status: HTTP {code}"),
+            ),
             suggestion: None,
         },
         None => Finding {
             severity: Severity::Warn,
-            message: "无法连接 api.anthropic.com（网络不可达或超时）".into(),
-            suggestion: Some("检查网络 / 代理设置".into()),
+            message: tr(
+                "无法连接 api.anthropic.com（网络不可达或超时）",
+                "Cannot reach api.anthropic.com (network unreachable or timeout)",
+            ),
+            suggestion: Some(tr(
+                "检查网络 / 代理设置",
+                "Check your network / proxy settings",
+            )),
         },
     }
 }

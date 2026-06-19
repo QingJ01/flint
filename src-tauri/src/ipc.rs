@@ -1,4 +1,5 @@
 use crate::diagnose::{self, DiagnosticReport, Finding};
+use crate::i18n::tr;
 use crate::preset::{self, Preset, PresetMeta};
 use crate::recipe::ParameterOption;
 use crate::wsl::{self, WslStatus};
@@ -136,6 +137,14 @@ pub async fn verify_anthropic_key() -> Result<Finding, String> {
     Ok(diagnose::verify_anthropic_key().await)
 }
 
+/// Sync the active UI locale to the backend so Rust-produced strings
+/// (diagnostics, install logs) match the frontend language. Called by the
+/// frontend on startup and whenever the user switches language.
+#[tauri::command]
+pub fn set_locale(locale: String) {
+    crate::i18n::set_locale(&locale);
+}
+
 /// Return the version options to show in a tool's dropdown. For `node` and
 /// `python` we fetch the *real* available versions at request time (fnm /
 /// endoflife.date); on any failure — or for any other tool — we fall back to
@@ -200,7 +209,7 @@ pub async fn import_snapshot(path: String, on_event: Channel<InstallEvent>) -> R
 
     // ---- Section 1: install missing tools ----
     let _ = on_event.send(InstallEvent::RestoreSection {
-        name: "安装缺失工具".into(),
+        name: tr("安装缺失工具", "Install missing tools"),
     });
     let wanted: Vec<&ToolStatus> = snap
         .tools
@@ -209,14 +218,20 @@ pub async fn import_snapshot(path: String, on_event: Channel<InstallEvent>) -> R
         .collect();
     if wanted.is_empty() {
         let _ = on_event.send(InstallEvent::Log {
-            line: "[ok] 快照里的工具本机都已安装，无需安装".into(),
+            line: tr(
+                "[ok] 快照里的工具本机都已安装，无需安装",
+                "[ok] All tools in the snapshot are already installed locally; nothing to install",
+            ),
         });
     }
     let total = wanted.len().max(1);
     let mut failures: Vec<String> = Vec::new();
     for (i, tool) in wanted.iter().enumerate() {
         let _ = on_event.send(InstallEvent::Log {
-            line: format!("[restore] 安装 {} ({}/{})", tool.id, i + 1, wanted.len()),
+            line: tr(
+                &format!("[restore] 安装 {} ({}/{})", tool.id, i + 1, wanted.len()),
+                &format!("[restore] Installing {} ({}/{})", tool.id, i + 1, wanted.len()),
+            ),
         });
         // Use recipe defaults for params (snapshot doesn't record the exact
         // version params the user picked — restoring "latest"/default is the
@@ -224,7 +239,10 @@ pub async fn import_snapshot(path: String, on_event: Channel<InstallEvent>) -> R
         let params: HashMap<String, String> = HashMap::new();
         if let Err(e) = install_recipe(&tool.id, &params, &on_event).await {
             let _ = on_event.send(InstallEvent::Log {
-                line: format!("[warn] {} 安装失败：{e}（继续其余）", tool.id),
+                line: tr(
+                    &format!("[warn] {} 安装失败：{e}（继续其余）", tool.id),
+                    &format!("[warn] {} failed to install: {e} (continuing with the rest)", tool.id),
+                ),
             });
             failures.push(tool.id.clone());
         }
@@ -235,23 +253,32 @@ pub async fn import_snapshot(path: String, on_event: Channel<InstallEvent>) -> R
 
     // ---- Section 2: apply mirrors ----
     let _ = on_event.send(InstallEvent::RestoreSection {
-        name: "应用镜像".into(),
+        name: tr("应用镜像", "Apply mirrors"),
     });
     if let Some(url) = &snap.npm_registry {
         match config::apply_npm_registry(url) {
             Ok(true) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[ok] npm 源 → {url}"),
+                    line: tr(
+                        &format!("[ok] npm 源 → {url}"),
+                        &format!("[ok] npm registry → {url}"),
+                    ),
                 });
             }
             Ok(false) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[skip] npm 源已是 {url}"),
+                    line: tr(
+                        &format!("[skip] npm 源已是 {url}"),
+                        &format!("[skip] npm registry already {url}"),
+                    ),
                 });
             }
             Err(e) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[warn] 设置 npm 源失败：{e}"),
+                    line: tr(
+                        &format!("[warn] 设置 npm 源失败：{e}"),
+                        &format!("[warn] failed to set npm registry: {e}"),
+                    ),
                 });
             }
         }
@@ -260,17 +287,26 @@ pub async fn import_snapshot(path: String, on_event: Channel<InstallEvent>) -> R
         match config::apply_pip_registry(url) {
             Ok(true) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[ok] pip 源 → {url}"),
+                    line: tr(
+                        &format!("[ok] pip 源 → {url}"),
+                        &format!("[ok] pip index → {url}"),
+                    ),
                 });
             }
             Ok(false) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[skip] pip 源已是 {url}"),
+                    line: tr(
+                        &format!("[skip] pip 源已是 {url}"),
+                        &format!("[skip] pip index already {url}"),
+                    ),
                 });
             }
             Err(e) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[warn] 设置 pip 源失败：{e}"),
+                    line: tr(
+                        &format!("[warn] 设置 pip 源失败：{e}"),
+                        &format!("[warn] failed to set pip index: {e}"),
+                    ),
                 });
             }
         }
@@ -282,7 +318,10 @@ pub async fn import_snapshot(path: String, on_event: Channel<InstallEvent>) -> R
         error: if failures.is_empty() {
             None
         } else {
-            Some(format!("以下工具未能安装：{}", failures.join(", ")))
+            Some(tr(
+                &format!("以下工具未能安装：{}", failures.join(", ")),
+                &format!("These tools failed to install: {}", failures.join(", ")),
+            ))
         },
     });
     Ok(())
@@ -317,7 +356,10 @@ pub async fn wsl_enable(on_event: Channel<InstallEvent>) -> Result<(), String> {
     // Start-Process returns immediately; we don't strictly care about its
     // exit code. Surface a hint log instead.
     let _ = on_event.send(InstallEvent::Log {
-        line: "[info] 若弹出 UAC 对话框请点「是」；操作完成后新开 PowerShell 运行 `wsl --status` 验证。".into(),
+        line: tr(
+            "[info] 若弹出 UAC 对话框请点「是」；操作完成后新开 PowerShell 运行 `wsl --status` 验证。",
+            "[info] Click Yes if a UAC dialog appears; when done, open a new PowerShell and run `wsl --status` to verify.",
+        ),
     });
     let _ = on_event.send(InstallEvent::Done {
         ok: exit_code == 0,
@@ -516,21 +558,35 @@ pub async fn install_recipe(
             match config::ensure_fnm_in_powershell_profiles() {
                 Ok(changed) if !changed.is_empty() => {
                     let _ = on_event.send(InstallEvent::Log {
-                        line: format!(
-                            "[ok] 已写入 PowerShell 集成（{}）；新开终端即可用 node",
-                            changed.join(", ")
+                        line: tr(
+                            &format!(
+                                "[ok] 已写入 PowerShell 集成（{}）；新开终端即可用 node",
+                                changed.join(", ")
+                            ),
+                            &format!(
+                                "[ok] PowerShell integration written ({}); open a new terminal to use node",
+                                changed.join(", ")
+                            ),
                         ),
                     });
                 }
                 Ok(_) => {
                     let _ = on_event.send(InstallEvent::Log {
-                        line: "[ok] PowerShell 集成已存在，无需重复写入".into(),
+                        line: tr(
+                            "[ok] PowerShell 集成已存在，无需重复写入",
+                            "[ok] PowerShell integration already present; nothing to write",
+                        ),
                     });
                 }
                 Err(e) => {
                     let _ = on_event.send(InstallEvent::Log {
-                        line: format!(
-                            "[warn] 写入 PowerShell 集成失败：{e}；你可能需手动在 PS profile 加入 fnm env 行"
+                        line: tr(
+                            &format!(
+                                "[warn] 写入 PowerShell 集成失败：{e}；你可能需手动在 PS profile 加入 fnm env 行"
+                            ),
+                            &format!(
+                                "[warn] failed to write PowerShell integration: {e}; you may need to add the fnm env line to your PS profile manually"
+                            ),
                         ),
                     });
                 }
@@ -547,12 +603,18 @@ pub async fn install_recipe(
                 match config::prune_user_python_paths(ver) {
                     Ok(()) => {
                         let _ = on_event.send(InstallEvent::Log {
-                            line: format!("[ok] 已清理旧版 Python 的 PATH，目标版本 {ver} 生效"),
+                            line: tr(
+                                &format!("[ok] 已清理旧版 Python 的 PATH，目标版本 {ver} 生效"),
+                                &format!("[ok] cleaned old Python PATH entries; target version {ver} now active"),
+                            ),
                         });
                     }
                     Err(e) => {
                         let _ = on_event.send(InstallEvent::Log {
-                            line: format!("[warn] 清理旧版 Python PATH 失败：{e}"),
+                            line: tr(
+                                &format!("[warn] 清理旧版 Python PATH 失败：{e}"),
+                                &format!("[warn] failed to clean old Python PATH: {e}"),
+                            ),
                         });
                     }
                 }
@@ -571,17 +633,26 @@ pub async fn install_recipe(
         match config::add_to_user_path(Path::new(&expanded)) {
             Ok(true) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[ok] 已加入用户 PATH：{expanded}"),
+                    line: tr(
+                        &format!("[ok] 已加入用户 PATH：{expanded}"),
+                        &format!("[ok] added to user PATH: {expanded}"),
+                    ),
                 });
             }
             Ok(false) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[skip] 已在用户 PATH 中：{expanded}"),
+                    line: tr(
+                        &format!("[skip] 已在用户 PATH 中：{expanded}"),
+                        &format!("[skip] already on user PATH: {expanded}"),
+                    ),
                 });
             }
             Err(e) => {
                 let _ = on_event.send(InstallEvent::Log {
-                    line: format!("[warn] 加入用户 PATH 失败（{expanded}）：{e}"),
+                    line: tr(
+                        &format!("[warn] 加入用户 PATH 失败（{expanded}）：{e}"),
+                        &format!("[warn] failed to add to user PATH ({expanded}): {e}"),
+                    ),
                 });
             }
         }
@@ -597,7 +668,10 @@ pub async fn install_recipe(
             .flatten();
     if version.is_none() {
         let _ = on_event.send(InstallEvent::Log {
-            line: "[!] 安装成功，但当前进程 PATH 未刷新；请重开终端后再点『重新检测』".into(),
+            line: tr(
+                "[!] 安装成功，但当前进程 PATH 未刷新；请重开终端后再点『重新检测』",
+                "[!] Installed, but this process's PATH is stale; reopen your terminal then click Re-scan",
+            ),
         });
     }
     let _ = on_event.send(InstallEvent::Done {
